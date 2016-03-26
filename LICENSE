@@ -1,0 +1,17 @@
+  The files in the base, contrib, cups, doc, examples, iccprofiles,
+  ijs, jbig2dec, lib, luratech/ldf_jb2, luratech/lwf_jp2, man, psi,
+  Resource and toolbin directories (folders) and any subdirectories
+  (sub-folders) are licensed as part of Artifex Ghostscript with the
+  exception of the Resource/CMap directory (excluding the file
+  "Identity-UTF16-H" which is copyright Artifex) which is licensed
+  by Adobe allowing redistribution, 
+
+  The freetype, expat, icclib, imdi, jasper, jpeg, jpegxr, lcms, libpng,
+  tiff, zlib and jpeg-xr directories are provided under separate license
+  compatible with use with Artifex Ghostscript.
+ 
+  This software is licensed to a single customer by Artifex Software Inc.
+  under the terms of a specific OEM agreement.
+
+  Among other things, the License requires that the copyright notice be
+  preserved on all files and this file must be included with all copies.
