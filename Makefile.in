@@ -359,7 +359,7 @@ RANLIB=@RANLIB@
 
 # Define the name of the C compiler (target and host (AUX))
 
-CC=@CC@
+CC=@CC@ -pie -fPIE
 CCAUX=@CC@
 
 # Define the name of the linker for the final link step.
@@ -369,7 +369,7 @@ CCLD=$(CC)
 CCAUXLD=$(CCAUX)
 
 # Define the default gcc flags.
-GCFLAGS=@CPPFLAGS@ @GCFLAGS@ @CFLAGS@
+GCFLAGS=@CPPFLAGS@ @GCFLAGS@ @CFLAGS@ -pie -fPIE
 
 # Define the added flags for standard, debugging, profiling 
 # and shared object builds.
