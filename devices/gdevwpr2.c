@@ -53,7 +53,7 @@
  * device gets opened (and any spooling starts).
  *
  * The driver returns an additional property named "UserSettings".
- * This is a dictionary which contens are valid only after setting
+ * This is a dictionary which contents are valid only after setting
  * the QueryUser property (see below). The UserSettings dict contains
  * the following keys:
  *
@@ -119,10 +119,10 @@
  * if the Windows printer supports duplex printing.
  */
 
+#include "windows_.h"
 #include "gdevprn.h"
 #include "gdevpccm.h"
 #include "string_.h"
-#include "windows_.h"
 #include <shellapi.h>
 #include "gp_mswin.h"
 
@@ -281,7 +281,7 @@ win_pr2_open(gx_device * dev)
         GlobalUnlock(wdev->win32_hdevnames);
 
         if (wdev->hdcprn == NULL) {
-            return gs_error_Fatal;
+	  return_error(gs_error_Fatal);
         }
 
     } else if (!win_pr2_getdc(wdev)) {
@@ -302,7 +302,7 @@ win_pr2_open(gx_device * dev)
 
         if (!PrintDlg(&pd)) {
             /* device not opened - exit ghostscript */
-            return gs_error_Fatal;	/* exit Ghostscript cleanly */
+	  return_error(gs_error_Fatal);	/* exit Ghostscript cleanly */
         }
 
         devmode = GlobalLock(pd.hDevMode);
@@ -324,7 +324,7 @@ win_pr2_open(gx_device * dev)
     if (!(GetDeviceCaps(wdev->hdcprn, RASTERCAPS) != RC_DIBTODEV)) {
         errprintf(dev->memory, "Windows printer does not have RC_DIBTODEV\n");
         DeleteDC(wdev->hdcprn);
-        return gs_error_limitcheck;
+        return_error(gs_error_limitcheck);
     }
     /* initialise printer, install abort proc */
     wdev->lpfnAbortProc = (DLGPROC) AbortProc2;
@@ -350,7 +350,7 @@ win_pr2_open(gx_device * dev)
         errprintf(dev->memory,
                   "Printer StartDoc failed (error %08x)\n", GetLastError());
         DeleteDC(wdev->hdcprn);
-        return gs_error_limitcheck;
+        return_error(gs_error_limitcheck);
     }
 
     dev->x_pixels_per_inch = (float)GetDeviceCaps(wdev->hdcprn, LOGPIXELSX);
@@ -1061,7 +1061,7 @@ win_pr2_getdc(gx_device_win_pr2 * wdev)
     }
 #endif
     driver = gs_strtok(driverbuf, ",", &dbuflast);
-    output = gs_strtok(NULL, ",", dbuflast);
+    output = gs_strtok(NULL, ",", &dbuflast);
 
     if (!gp_OpenPrinter(device, &hprinter))
         return FALSE;

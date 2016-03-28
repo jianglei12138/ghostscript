@@ -650,10 +650,10 @@ pdf_obj_mark_unused(gx_device_pdf *pdev, long id)
 
     if (gp_fseek_64 (tfile, ((int64_t)(id - pdev->FirstObjectNumber)) * sizeof(pos),
           SEEK_SET) != 0)
-          return gs_error_ioerror;
+      return_error(gs_error_ioerror);
     fwrite(&pos, sizeof(pos), 1, tfile);
     if (gp_fseek_64(tfile, tpos, SEEK_SET) != 0)
-        return gs_error_ioerror;
+      return_error(gs_error_ioerror);
     return 0;
 }
 
@@ -672,10 +672,10 @@ pdf_open_obj(gx_device_pdf * pdev, long id, pdf_resource_type_t type)
 
         if (gp_fseek_64 (tfile, ((int64_t)(id - pdev->FirstObjectNumber)) * sizeof(pos),
               SEEK_SET) != 0)
-              return gs_error_ioerror;
+	  return_error(gs_error_ioerror);
         fwrite(&pos, sizeof(pos), 1, tfile);
         if (gp_fseek_64(tfile, tpos, SEEK_SET) != 0)
-              return gs_error_ioerror;
+	  return_error(gs_error_ioerror);
     }
     if (pdev->ForOPDFRead && pdev->ProduceDSC) {
         switch(type) {
@@ -1295,7 +1295,7 @@ pdf_find_resource_by_resource_id(gx_device_pdf * pdev, pdf_resource_type_t rtype
 
     for (i = 0; i < NUM_RESOURCE_CHAINS; i++) {
         for (pres = pchain[i]; pres != 0; pres = pres->next) {
-            if (pres->object->id == id)
+            if (pres->object && pres->object->id == id)
                 return pres;
         }
     }
@@ -1696,7 +1696,7 @@ pdf_store_page_resources(gx_device_pdf *pdev, pdf_page_t *page, bool clear_usage
 }
 
 /* Copy data from a temporary file to a stream. */
-void
+int
 pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss)
 {
     gs_offset_t r, left = count;
@@ -1707,19 +1707,19 @@ pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss
 
         r = fread(buf, 1, copy, file);
         if (r < 1) {
-            gs_note_error(gs_error_ioerror);
-            return;
+            return gs_note_error(gs_error_ioerror);
         }
         if (ss)
             s_arcfour_process_buffer(ss, buf, copy);
         stream_write(s, buf, copy);
         left -= copy;
     }
+    return 0;
 }
 
 /* Copy data from a temporary file to a stream,
    which may be targetted to the same file. */
-void
+int
 pdf_copy_data_safe(stream *s, FILE *file, gs_offset_t position, long count)
 {
     long r, left = count;
@@ -1730,22 +1730,20 @@ pdf_copy_data_safe(stream *s, FILE *file, gs_offset_t position, long count)
         int64_t end_pos = gp_ftell_64(file);
 
         if (gp_fseek_64(file, position + count - left, SEEK_SET) != 0) {
-            gs_note_error(gs_error_ioerror);
-            return;
+            return_error(gs_error_ioerror);
         }
         r = fread(buf, 1, copy, file);
         if (r < 1) {
-            gs_note_error(gs_error_ioerror);
-            return;
+            return_error(gs_error_ioerror);
         }
         if (gp_fseek_64(file, end_pos, SEEK_SET) != 0) {
-            gs_note_error(gs_error_ioerror);
-            return;
+            return_error(gs_error_ioerror);
         }
         stream_write(s, buf, copy);
         sflush(s);
         left -= copy;
     }
+    return 0;
 }
 
 /* ------ Pages ------ */
@@ -1764,8 +1762,8 @@ pdf_page_id(gx_device_pdf * pdev, int page_num)
         pdf_page_t *new_pages;
 
         /* Maximum page in PDF is 2^31 - 1. Clamp to that limit here */
-        if (page_num > (1L << 31) - 11)
-            page_num = (1L << 31) - 11;
+        if (page_num > (1LU << 31) - 11)
+            page_num = (1LU << 31) - 11;
         new_num_pages = max(page_num + 10, pdev->num_pages << 1);
 
         new_pages = gs_resize_object(pdev->pdf_memory, pdev->pages, new_num_pages,

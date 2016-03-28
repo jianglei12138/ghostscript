@@ -244,6 +244,9 @@ void
 gdev_vector_init(gx_device_vector * vdev)
 {
     gdev_vector_reset(vdev);
+    if (vdev->procs.dev_spec_op == NULL || vdev->procs.dev_spec_op == gx_default_dev_spec_op)
+        vdev->procs.dev_spec_op = gdev_vector_dev_spec_op;
+
     vdev->scale.x = vdev->scale.y = 1.0;
     vdev->in_page = false;
     gdev_vector_load_cache(vdev);
@@ -970,6 +973,9 @@ int gdev_vector_get_param(gx_device *dev, char *Param, void *list)
     if (strcmp(Param, "HighLevelDevice") == 0) {
         return param_write_bool(plist, "HighLevelDevice", &bool_true);
     }
+    if (strcmp(Param, "NoInterpolateImagemasks") == 0) {
+        return param_write_bool(plist, "NoInterpolateImagemasks", &bool_true);
+    }
     return gx_default_get_param(dev, Param, list);
 }
 
@@ -991,6 +997,8 @@ gdev_vector_get_params(gx_device * dev, gs_param_list * plist)
         return ecode;
     if ((ecode = param_write_bool(plist, "HighLevelDevice", &bool_true)) < 0)
         return ecode;
+    if ((ecode = param_write_bool(plist, "NoInterpolateImagemasks", &bool_true)) < 0)
+        return ecode;
     return code;
 }
 
@@ -1004,9 +1012,13 @@ gdev_vector_put_params(gx_device * dev, gs_param_list * plist)
     bool ignb;
     gs_param_name param_name;
     gs_param_string ofns;
-    bool open = dev->is_open, HighLevelDevice;
+    bool open = dev->is_open, HighLevelDevice, NoInterpolateImagemasks;
 
     code = param_read_bool(plist, (param_name = "HighLevelDevice"), &HighLevelDevice);
+    if (code < 0)
+        return code;
+
+    code = param_read_bool(plist, (param_name = "NoInterpolateImagemasks"), &NoInterpolateImagemasks);
     if (code < 0)
         return code;
 
@@ -1073,7 +1085,7 @@ ofe:        param_signal_error(plist, param_name, ecode);
     if (dev->color_info.anti_alias.text_bits != 1 || dev->color_info.anti_alias.graphics_bits != 1) {
         emprintf(dev->memory,
             "\n\n  ERROR:\n    Can't set GraphicsAlphaBits or TextAlphaBits with a vector device.\n");
-        return gs_error_unregistered;
+        return_error(gs_error_unregistered);
     }
 
     if (ofns.data != 0) {

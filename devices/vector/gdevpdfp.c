@@ -127,6 +127,7 @@ static const gs_param_item_t pdf_param_items[] = {
     pi("PDFUseOldCMS", gs_param_type_bool, UseOldColor),
     pi("FastWebView", gs_param_type_bool, Linearise),
     pi("NoOutputFonts", gs_param_type_bool, FlattenFonts),
+    pi("WantsPageLabels", gs_param_type_bool, WantsPageLabels),
 #undef pi
     gs_param_item_end
 };
@@ -495,7 +496,7 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
      * or less impossible to alter the setting in the (potentially saved) page
      * device dictionary, so we use this rather clunky method.
      */
-    if (pdev->PDFA < 0 || pdev->PDFA > 2){
+    if (pdev->PDFA < 0 || pdev->PDFA > 3){
         ecode = gs_note_error(gs_error_rangecheck);
         param_signal_error(plist, "PDFA", ecode);
         goto fail;
@@ -709,7 +710,10 @@ gdev_pdf_put_params_impl(gx_device * dev, const gx_device_pdf * save_dev, gs_par
 #undef MAX_EXTENT
     if (pdev->FirstObjectNumber != save_dev->FirstObjectNumber) {
         if (pdev->xref.file != 0) {
-            gp_fseek_64(pdev->xref.file, 0L, SEEK_SET);
+            if (gp_fseek_64(pdev->xref.file, 0L, SEEK_SET) != 0) {
+                ecode = gs_error_ioerror;
+                goto fail;
+            }
             pdf_initialize_ids(pdev);
         }
     }

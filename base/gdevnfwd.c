@@ -841,7 +841,7 @@ gx_forward_dev_spec_op(gx_device * dev, int dev_spec_op, void *data, int size)
         if (dev_spec_op == gxdso_pattern_shfill_doesnt_need_path) {
             return (dev->procs.fill_path == gx_default_fill_path);
         }
-        return gs_error_undefined;
+        return_error(gs_error_undefined);
     } else if (dev_spec_op == gxdso_pattern_handles_clip_path) {
         if (dev->procs.fill_path == gx_default_fill_path)
             return 0;
@@ -1328,7 +1328,7 @@ static void do_device_dump(gx_device *dev, int n)
         dmlprintf(dev->memory, "NULL\n");
         return;
     }
-    dmlprintf3(dev->memory, "%x(%d) = '%s'\n", dev, dev->rc.ref_count, dev->dname);
+    dmlprintf3(dev->memory, "%p(%ld) = '%s'\n", dev, dev->rc.ref_count, dev->dname);
 
     data.n = 0;
     do {

@@ -97,7 +97,7 @@ gs_cspace_final(const gs_memory_t *cmem, void *vptr)
 
     if (pcs->type->final)
         pcs->type->final(pcs);
-    if_debug2m('c', cmem, "[c]cspace final %08x %d\n", pcs, pcs->id);
+    if_debug2m('c', cmem, "[c]cspace final %p %d\n", pcs, (int)pcs->id);
     rc_decrement_only_cs(pcs->base_space, "gs_cspace_final");
 
     /* No need to decrement the ICC profile data.  It is handled
@@ -114,7 +114,7 @@ gs_cspace_alloc_with_id(gs_memory_t *mem, ulong id,
 
     rc_alloc_struct_1(pcs, gs_color_space, &st_color_space, mem, return NULL,
                       "gs_cspace_alloc_with_id");
-    if_debug3m('c', mem, "[c]cspace alloc %08x %s %d\n",
+    if_debug3m('c', mem, "[c]cspace alloc %p %s %d\n",
                pcs, pcstype->stype->sname, pcstype->index);
     pcs->type = pcstype;
     pcs->id = id;
@@ -166,7 +166,7 @@ gs_color_space *
 gs_cspace_new_ICC(gs_memory_t *pmem, gs_state * pgs, int components)
 {
     gsicc_manager_t *icc_manage = pgs->icc_manager;
-    int code;
+    int code = 0;
     gs_color_space *pcspace = gs_cspace_alloc(pmem, &gs_color_space_type_ICC);
 
     switch (components) {
@@ -859,9 +859,9 @@ is_dc_nearly_linear(const gx_device *dev, const gx_device_color *c,
         const gx_device_color *c0, const gx_device_color *c1,
         double t, int n, float smoothness)
 {
+    int i;
 
     if (c0->type == &gx_dc_type_data_pure) {
-        int i;
         gx_color_index pure0 = c0->colors.pure;
         gx_color_index pure1 = c1->colors.pure;
         gx_color_index pure = c->colors.pure;
@@ -876,6 +876,22 @@ is_dc_nearly_linear(const gx_device *dev, const gx_device_color *c,
             int b = (pure >> shift) & mask;
             double bb = b0 * t + b1 * (1 - t);
 
+            if (any_abs(b - bb) > max_diff)
+                return false;
+        }
+        return true;
+    } else if (c0->type == &gx_dc_type_data_devn) {
+        for (i = 0; i < n; i++) {
+            int max_color = (i == dev->color_info.gray_index ? dev->color_info.max_gray
+                : dev->color_info.max_color);
+            double max_diff = max(1, max_color * smoothness);
+            /* Color values are 16 bit.  We are basing the smoothness on the
+               device bit depth.  So make sure to adjust the above max diff
+               base upon our device bit depth */
+            double b0 = (c0->colors.devn.values[i]) * max_color / gx_max_color_value;
+            double b1 = (c1->colors.devn.values[i]) * max_color / gx_max_color_value;
+            double b = (c->colors.devn.values[i]) * max_color / gx_max_color_value;
+            double bb = b0 * t + b1 * (1 - t);
             if (any_abs(b - bb) > max_diff)
                 return false;
         }

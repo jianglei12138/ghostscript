@@ -448,8 +448,15 @@ gdev_mem_open_scan_lines(gx_device_memory *mdev, int setup_height)
                                     "mem_open");
         if (mdev->base == 0)
             return_error(gs_error_VMerror);
+#ifdef PACIFY_VALGRIND
+        /* If we end up writing the bitmap to the clist, we can get valgrind errors
+         * because we write and read the padding at the end of each raster line.
+         * Easiest to set the entire block.
+         */
+        memset(mdev->base, 0x00, size);
+#endif
         align = 1<<mdev->log2_align_mod;
-        mdev->base += (-(int)mdev->base) & (align-1);
+        mdev->base += (-(int)(intptr_t)mdev->base) & (align-1);
         mdev->foreign_bits = false;
     } else if (mdev->line_pointer_memory != 0) {
         /* Allocate the line pointers now. */
@@ -464,6 +471,9 @@ gdev_mem_open_scan_lines(gx_device_memory *mdev, int setup_height)
         line_pointers_adjacent = false;
     }
     if (line_pointers_adjacent) {
+        if (mdev->base == 0)
+            return_error(gs_error_rangecheck);
+
         gdev_mem_bits_size(mdev, mdev->width, mdev->height, &size);
         mdev->line_ptrs = (byte **)(mdev->base + size);
     }
@@ -506,7 +516,7 @@ gdev_mem_set_line_ptrs(gx_device_memory * mdev, byte * base, int raster,
     /* Now, pad and align as required. */
     if (mdev->log2_align_mod > log2_align_bitmap_mod) {
         int align = 1<<mdev->log2_align_mod;
-        align = (-(int)base) & (align-1);
+        align = (-(int)(intptr_t)base) & (align-1);
         data = base + align;
     } else {
         data = mdev->base;
@@ -619,7 +629,7 @@ mem_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
     }
 }
 
-#if !arch_is_big_endian
+#if !ARCH_IS_BIG_ENDIAN
 
 /*
  * Swap byte order in a rectangular subset of a bitmap.  If store = true,
@@ -699,7 +709,7 @@ mem_word_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
     return code;
 }
 
-#endif /* !arch_is_big_endian */
+#endif /* !ARCH_IS_BIG_ENDIAN */
 
 /* Map a r-g-b color to a color index for a mapped color memory device */
 /* (2, 4, or 8 bits per pixel.) */

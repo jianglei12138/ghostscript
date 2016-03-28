@@ -278,9 +278,12 @@ cmd_write_trapezoid_cmd(gx_device_clist_writer * cldev, gx_clist_state * pcls,
         cmd_putw(ytop, dp);
     }
     if_debug6m('L', cldev->memory, "    t%d:%ld,%ld,%ld,%ld   %ld\n",
-               rcsize - 1, left->start.x, left->start.y, left->end.x, left->end.y, ybot);
+               rcsize - 1, (long int)left->start.x, (long int)left->start.y,
+               (long int)left->end.x, (long int)left->end.y, (long int)ybot);
     if_debug6m('L', cldev->memory, "    t%ld,%ld,%ld,%ld   %ld   o=%d\n",
-               right->start.x, right->start.y, right->end.x, right->end.y, ytop, options);
+               (long int)right->start.x, (long int)right->start.y,
+               (long int)right->end.x, (long int)right->end.y, (long int)ytop,
+               options);
     if (options & 2) {
         cmd_putw(fa->clip->p.x, dp);
         cmd_putw(fa->clip->p.y, dp);
@@ -437,6 +440,21 @@ error_in_rect:
     return 0;
 }
 
+static void update_color_use_frac_array(int num_colors, const frac31 *color,
+    cmd_rects_enum_t *re)
+{
+    int k;
+
+    if (color == NULL)
+        return;
+
+    for (k = 0; k < num_colors; k++){
+        if (color[k] != 0) {
+            re->pcls->color_usage.or |= (1<<k);
+        }
+    }
+}
+
 static inline int
 clist_write_fill_trapezoid(gx_device * dev,
     const gs_fixed_edge *left, const gs_fixed_edge *right,
@@ -512,8 +530,15 @@ clist_write_fill_trapezoid(gx_device * dev,
                     return gx_default_fill_trapezoid(dev, left, right, ybot, ytop, swap_axes, pdcolor, lop);
                 }
                 code = cmd_update_lop(cdev, re.pcls, lop);
-            } else
+            } else {
+                /* Even with pdcolor NULL, we may still have colors packed in 
+                   c0, c1, c2 or c3 */
+                update_color_use_frac_array(dev->color_info.num_components, c0, &re);
+                update_color_use_frac_array(dev->color_info.num_components, c1, &re);
+                update_color_use_frac_array(dev->color_info.num_components, c2, &re);
+                update_color_use_frac_array(dev->color_info.num_components, c3, &re);
                 code = 0;
+            }
             if (code >= 0) {
                 /* Dont't want to shorten the trapezoid by the band boundary,
                    keeping in mind a further optimization with writing same data to all bands. */
@@ -1436,8 +1461,9 @@ clist_copy_alpha(gx_device * dev, const byte * data, int data_x,
 
             do {
                 code = set_cmd_put_op(dp, cdev, re.pcls, cmd_opv_extend, 1);
-                code = set_cmd_put_op(dp, cdev, re.pcls,
-                                      cmd_opv_ext_unset_color_is_devn, 1);
+                if (code >= 0)
+                    code = set_cmd_put_op(dp, cdev, re.pcls,
+                                          cmd_opv_ext_unset_color_is_devn, 1);
             } while (RECT_RECOVER(code));
             if (code < 0 && SET_BAND_CODE(code))
                 goto error_in_rect;

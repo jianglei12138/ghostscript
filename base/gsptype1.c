@@ -1324,10 +1324,12 @@ static RELOC_PTRS_WITH(dc_colored_masked_reloc_ptrs, gx_device_color *cptr)
 RELOC_PTRS_END
 static ENUM_PTRS_WITH(dc_devn_masked_enum_ptrs, gx_device_color *cptr)
 ENUM_SUPER(gx_device_color, st_client_color, ccolor, 0);
+(void)cptr; /* Avoid unused warning */
 ENUM_PTRS_END
 static RELOC_PTRS_WITH(dc_devn_masked_reloc_ptrs, gx_device_color *cptr)
 {
     RELOC_SUPER(gx_device_color, st_client_color, ccolor);
+    (void)cptr; /* Avoid unused warning */
 }
 RELOC_PTRS_END
 static ENUM_PTRS_BEGIN(dc_binary_masked_enum_ptrs)
@@ -2010,7 +2012,7 @@ gx_dc_pattern_read(
     int64_t offset1 = offset;
     gx_color_tile *ptile;
     int code, l;
-    tile_trans_clist_info_t trans_info = { 0 };
+    tile_trans_clist_info_t trans_info = { { { 0 } } };
     int cache_space_needed;
 
     if (offset == 0) {

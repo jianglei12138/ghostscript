@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2012 Artifex Software, Inc.
+# Copyright (C) 2001-2015 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -17,7 +17,7 @@
 # echogs, and the 'platform' modules.
 
 # Define the name of this makefile.
-UNIX_AUX_MAK=$(GLSRC)unix-aux.mak
+UNIX_AUX_MAK=$(GLSRC)unix-aux.mak $(TOP_MAKEFILES)
 
 # -------------------------------- Library -------------------------------- #
 
@@ -30,49 +30,48 @@ UNIX_AUX_MAK=$(GLSRC)unix-aux.mak
 # (SVR4) platforms.
 unix__=$(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_upapr.$(OBJ) $(GLOBJ)gp_unix.$(OBJ)\
        $(GLOBJ)gp_unifs.$(OBJ) $(GLOBJ)gp_unifn.$(OBJ) $(GLOBJ)gp_stdia.$(OBJ)\
-       $(GLOBJ)gp_unix_cache.$(OBJ)
+       $(GLOBJ)gp_unix_cache.$(OBJ) $(GLOBJ)gp_nxpsprn.$(OBJ)
 
-$(GLGEN)unix_.dev: $(unix__) $(GLD)nosync.dev $(GLD)smd5.dev $(MAKEDIRS)
+$(GLGEN)unix_.dev: $(unix__) $(GLD)nosync.dev $(GLD)smd5.dev $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(SETMOD) $(GLGEN)unix_ $(unix__) -include $(GLD)nosync
 	$(ADDMOD) $(GLGEN)unix_ -include $(GLD)smd5
 
 $(GLOBJ)gp_unix.$(OBJ): $(GLSRC)gp_unix.c $(AK)\
- $(pipe__h) $(string__h) $(time__h) $(gx_h) $(gsexit_h) $(gp_h) $(MAKEDIRS)
+ $(pipe__h) $(string__h) $(time__h) $(gx_h) $(gsexit_h) $(gp_h) $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(GLCC) $(FONTCONFIG_CFLAGS) $(GLO_)gp_unix.$(OBJ) $(C_) $(GLSRC)gp_unix.c
 
 $(AUX)gp_unix.$(OBJ): $(GLSRC)gp_unix.c $(AK)\
  $(pipe__h) $(string__h) $(time__h)\
- $(gx_h) $(gsexit_h) $(gp_h) $(MAKEDIRS)
+ $(gx_h) $(gsexit_h) $(gp_h) $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(GLCCAUX) $(FONTCONFIG_CFLAGS) $(AUXO_)gp_unix.$(OBJ) $(C_) $(GLSRC)gp_unix.c
 
 $(GLOBJ)gp_unix_cache.$(OBJ): $(GLSRC)gp_unix_cache.c $(AK)\
  $(stdio__h) $(string__h) $(time__h) $(gconfigd_h) $(gp_h) $(gsmd5_h)\
- $(MAKEDIRS)
+ $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(GLCC) $(GLO_)gp_unix_cache.$(OBJ) $(C_) $(GLSRC)gp_unix_cache.c
 
 # assume all Unix platforms support unbuffered read
 $(GLOBJ)gp_stdia.$(OBJ): $(GLSRC)gp_stdia.c $(AK)\
-  $(stdio__h) $(time__h) $(unistd__h) $(gx_h) $(gp_h) $(MAKEDIRS)
+  $(stdio__h) $(time__h) $(unistd__h) $(gx_h) $(gp_h) $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(GLCC) $(GLO_)gp_stdia.$(OBJ) $(C_) $(GLSRC)gp_stdia.c
 
 $(AUX)gp_stdia.$(OBJ): $(GLSRC)gp_stdia.c $(AK)\
-  $(stdio__h) $(time__h) $(unistd__h) $(gx_h) $(gp_h) $(MAKEDIRS)
+  $(stdio__h) $(time__h) $(unistd__h) $(gx_h) $(gp_h) $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(GLCCAUX) $(AUXO_)gp_stdia.$(OBJ) $(C_) $(GLSRC)gp_stdia.c
 
 # System V platforms other than SVR4, which lack some system calls,
 # but have pipes.
-sysv__=$(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_upapr.$(OBJ) $(GLOBJ)gp_unix.$(OBJ) $(GLOBJ)gp_unifs.$(OBJ) $(GLOBJ)gp_unifn.$(OBJ) $(GLOBJ)gp_sysv.$(OBJ)
-$(GLGEN)sysv_.dev: $(sysv__) $(GLD)nosync.dev $(MAKEDIRS)
+sysv__=$(GLOBJ)gp_getnv.$(OBJ) $(GLOBJ)gp_upapr.$(OBJ) $(GLOBJ)gp_unix.$(OBJ) $(GLOBJ)gp_unifs.$(OBJ) $(GLOBJ)gp_unifn.$(OBJ) $(GLOBJ)gp_sysv.$(OBJ) $(GLOBJ)gp_nxpsprn.$(OBJ)
+$(GLGEN)sysv_.dev: $(sysv__) $(GLD)nosync.dev $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(SETMOD) $(GLGEN)sysv_ $(sysv__) -include $(GLD)nosync
 
 $(GLOBJ)gp_sysv.$(OBJ): $(GLSRC)gp_sysv.c $(stdio__h) $(time__h) $(AK)\
- $(MAKEDIRS)
+ $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(GLCC) $(GLO_)gp_sysv.$(OBJ) $(C_) $(GLSRC)gp_sysv.c
 
 # -------------------------- Auxiliary programs --------------------------- #
 
-$(ECHOGS_XE): $(GLSRC)echogs.c $(AK) $(stdpre_h) $(MAKEDIRS)
-	$(CCAUX_) $(I_)$(GLSRCDIR)$(_I) $(O_)$(ECHOGS_XE) $(GLSRC)echogs.c $(AUXEXTRALIBS)
+$(ECHOGS_XE): 
 
 # On the RS/6000 (at least), compiling genarch.c with gcc with -O
 # produces a buggy executable.
@@ -82,6 +81,7 @@ $(GENDEV_XE):
 
 $(GENHT_XE): 
 
+
 # To get GS to use the system zlib, you remove/hide the gs/zlib directory
 # which means that the mkromfs build can't find the zlib source it needs.
 # So it's split into two targets, one using the zlib source directly.....
@@ -90,16 +90,14 @@ MKROMFS_OBJS_0=$(MKROMFS_ZLIB_OBJS) $(AUX)gpmisc.$(OBJ) $(AUX)gp_getnv.$(OBJ) \
  $(AUX)gp_stdia.$(OBJ) $(AUX)gsutil.$(OBJ) $(AUX)memento.$(OBJ)
 
 $(MKROMFS_XE)_0: 
-
 # .... and one using the zlib library linked via the command line
 MKROMFS_OBJS_1=$(AUX)gscdefs.$(OBJ) \
  $(AUX)gpmisc.$(OBJ) $(AUX)gp_getnv.$(OBJ) \
  $(AUX)gp_unix.$(OBJ) $(AUX)gp_unifs.$(OBJ) $(AUX)gp_unifn.$(OBJ) \
  $(AUX)gp_stdia.$(OBJ) $(AUX)gsutil.$(OBJ)
 
-$(MKROMFS_XE)_1:
-
-$(MKROMFS_XE): 
+$(MKROMFS_XE)_1: 
+$(MKROMFS_XE):
 
 # Query the environment to construct gconfig_.h.
 # These are all defined conditionally (except the JasPER one), so that
@@ -107,7 +105,7 @@ $(MKROMFS_XE):
 # The "empty" $(ECHOGS_XE) lines just append a white space line to the
 # header file.
 INCLUDE=/usr/include
-$(gconfig__h): $(UNIX_AUX_MAK) $(ECHOGS_XE) $(MAKEDIRS)
+$(gconfig__h): $(UNIX_AUX_MAK) $(ECHOGS_XE) $(UNIX_AUX_MAK) $(MAKEDIRS)
 	$(ECHOGS_XE) -w $(gconfig__h) -x 2f2a -s This file was generated automatically by unix-aux.mak. -s -x 2a2f
 	$(ECHOGS_XE) -a $(gconfig__h)
 

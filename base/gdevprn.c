@@ -125,7 +125,14 @@ prn_finish_bg_print(gx_device_printer *ppdev)
     /* close and unlink the files and free the device and its private allocator	*/
     if (ppdev->bg_print.device != NULL) {
         int closecode;
+        gx_device_printer *bgppdev = (gx_device_printer *)ppdev->bg_print.device;
         gx_semaphore_wait(ppdev->bg_print.sema);
+        /* If numcopies > 1, then the bg_print->device will have closed and reopened
+         * the output file, so the pointer in the original device is now stale,
+         * so copy it back.
+         * If numcopies == 1, this is pointless, but benign.
+         */
+        ppdev->file = bgppdev->file;
         closecode = gdev_prn_close_printer((gx_device *)ppdev);
         if (ppdev->bg_print.return_code == 0)
             ppdev->bg_print.return_code = closecode;	/* return code here iff there wasn't another error */
@@ -315,22 +322,10 @@ gdev_prn_tear_down(gx_device *pdev, byte **the_memory)
         ppdev->buffer_space = 0;
         was_command_list = true;
 
+        prn_finish_bg_print(ppdev);
+        
         gs_free_object(pcldev->memory->non_gc_memory, pcldev->cache_chunk, "free tile cache for clist");
         pcldev->cache_chunk = 0;
-        if (ppdev->bg_print.ocfile) {
-            (void)ppdev->bg_print.oio_procs->fclose(ppdev->bg_print.ocfile, ppdev->bg_print.ocfname, true);
-        }
-        if (ppdev->bg_print.obfile) {
-            (void)ppdev->bg_print.oio_procs->fclose(ppdev->bg_print.obfile, ppdev->bg_print.obfname, true);
-        }
-        ppdev->bg_print.ocfile = ppdev->bg_print.obfile = NULL;
-        if (ppdev->bg_print.ocfname) {
-            gs_free_object(ppdev->memory->non_gc_memory, ppdev->bg_print.ocfname, "gdev_prn_tear_down(ocfname)");
-        }
-        if (ppdev->bg_print.obfname) {
-            gs_free_object(ppdev->memory->non_gc_memory, ppdev->bg_print.obfname, "gdev_prn_tear_down(obfname)");
-        }
-        ppdev->bg_print.ocfname = ppdev->bg_print.obfname = NULL;
 
         rc_decrement(pcldev->icc_cache_cl, "gdev_prn_tear_down");
         pcldev->icc_cache_cl = NULL;
@@ -611,7 +606,7 @@ gdev_prn_free_memory(gx_device *pdev)
 int	/* rets 0 ok, -ve error if couldn't start thread */
 gx_default_start_render_thread(gdev_prn_start_render_params *params)
 {
-    return gs_error_unknownerror;
+    return_error(gs_error_unknownerror);
 }
 
 /* Open the renderer's copy of a device. */
@@ -619,7 +614,7 @@ gx_default_start_render_thread(gdev_prn_start_render_params *params)
 int
 gx_default_open_render_device(gx_device_printer *pdev)
 {
-    return gs_error_unknownerror;
+    return_error(gs_error_unknownerror);
 }
 
 /* Close the renderer's copy of a device. */
@@ -1045,10 +1040,7 @@ gdev_prn_output_page_aux(gx_device * pdev, int num_copies, int flush, bool seeka
                 threads_enabled = 0;	/* and allow current page to try foreground */
             }
             /* Use 'while' instead of 'if' to avoid nesting */
-            while (ppdev->bg_print_requested && threads_enabled &&
-                   /* FIXME: Don't allow bg_print if multiple rendering threads are used.  */
-                   /* TEMPORARY WORK AROUND FOR BUG 695711 */
-                   ppdev->num_render_threads_requested == 0) {
+            while (ppdev->bg_print_requested && threads_enabled) {
                 gx_device *ndev;
                 gx_device_printer *npdev;
                 gx_device_clist_reader *crdev = (gx_device_clist_reader *)ppdev;
@@ -1092,9 +1084,9 @@ gdev_prn_output_page_aux(gx_device * pdev, int num_copies, int flush, bool seeka
                 npdev->num_render_threads_requested = ppdev->num_render_threads_requested;
 
                 /* Now start the thread to print the page */
-                if ((code == gp_thread_start(prn_print_page_in_background,
-                                             (void *)&(ppdev->bg_print),
-                                             &(ppdev->bg_print.thread_id))) < 0) {
+                if ((code = gp_thread_start(prn_print_page_in_background,
+                                            (void *)&(ppdev->bg_print),
+                                            &(ppdev->bg_print.thread_id))) < 0) {
                     /* Did not start cleanly - clean up is in print_foreground block below */
                     break;
                 }
@@ -1233,7 +1225,7 @@ int
 gx_default_buffer_page(gx_device_printer *pdev, FILE *prn_stream,
                        int num_copies)
 {
-    return gs_error_unknownerror;
+    return_error(gs_error_unknownerror);
 }
 
 /*

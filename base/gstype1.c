@@ -131,7 +131,6 @@ gs_type1_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
     crypt_state state;
     register int c;
     int code = 0;
-    fixed ftx = pcis->origin.x, fty = pcis->origin.y;
 
     switch (pcis->init_done) {
         case -1:
@@ -139,7 +138,6 @@ gs_type1_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
             break;
         case 0:
             gs_type1_finish_init(pcis);	/* sets origin */
-            ftx = pcis->origin.x, fty = pcis->origin.y;
             code = t1_hinter__set_mapping(h, &pcis->pis->ctm,
                             &pfont->FontMatrix, &pfont->base->FontMatrix,
                             pcis->scale.x.log2_unit, pcis->scale.x.log2_unit,
@@ -234,18 +232,21 @@ gs_type1_interpret(gs_type1_state * pcis, const gs_glyph_data_t *pgd,
             case c_undef17:
                 return_error(gs_error_invalidfont);
             case c_callsubr:
+                CS_CHECK_POP(csp, cstack);
                 c = fixed2int_var(*csp) + pdata->subroutineNumberBias;
                 code = pdata->procs.subr_data
                     (pfont, c, false, &ipsp[1].cs_data);
                 if (code < 0)
-                    return_error(code);
+                    return code;
                 --csp;
                 ipsp->ip = cip, ipsp->dstate = state;
                 ++ipsp;
+                CS_CHECK_IPSTACK(ipsp, pcis->ipstack);
                 cip = ipsp->cs_data.bits.data;
                 goto call;
             case c_return:
                 gs_glyph_data_free(&ipsp->cs_data, "gs_type1_interpret");
+                CS_CHECK_IPSTACK(ipsp, pcis->ipstack);
                 --ipsp;
                 goto cont;
             case c_undoc15:
@@ -431,6 +432,7 @@ rsbw:		/* Give the caller the opportunity to intervene. */
                         gs_type1_sbw(pcis, cs0, cs1, cs2, cs3);
                         goto rsbw;
                     case ce1_div:
+                        CS_CHECK_POP(&csp[-1], cstack);
                         csp[-1] = float2fixed((double)csp[-1] / (double)*csp);
                         --csp;
                         goto pushed;

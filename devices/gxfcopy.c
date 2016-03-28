@@ -442,7 +442,7 @@ named_glyph_slot_hashed(gs_copied_font_data_t *cfdata, gs_glyph glyph,
     while (names[hash].str.data != 0 && names[hash].glyph != glyph) {
         hash = (hash + hash2) % gsize;
         if (!tries)
-            return gs_error_undefined;
+	  return_error(gs_error_undefined);
         tries--;
     }
     *pslot = &cfdata->glyphs[hash];
@@ -783,9 +783,12 @@ compare_glyphs(const gs_font *cfont, const gs_font *ofont, gs_glyph *glyphs,
         gs_glyph glyph = *(gs_glyph *)((byte *)glyphs + i * glyphs_step);
         gs_glyph pieces0[40], *pieces = pieces0;
         gs_glyph_info_t info0, info1;
-        int code0 = ofont->procs.glyph_info((gs_font *)ofont, glyph, &mat, members, &info0);
-        int code1 = cfont->procs.glyph_info((gs_font *)cfont, glyph, &mat, members, &info1);
-        int code2, code;
+        int code0, code1, code2, code;
+
+        memset(&info0, 0x00, sizeof(gs_glyph_info_t));
+        code0 = ofont->procs.glyph_info((gs_font *)ofont, glyph, &mat, members, &info0);
+        memset(&info1, 0x00, sizeof(gs_glyph_info_t));
+        code1 = cfont->procs.glyph_info((gs_font *)cfont, glyph, &mat, members, &info1);
 
         if (code0 == gs_error_undefined)
             continue;
@@ -2064,6 +2067,18 @@ gs_copy_font(gs_font *font, const gs_matrix *orig_matrix, gs_memory_t *mem, gs_f
                                       "gs_copy_font(names)");
     copied = gs_alloc_struct(mem, gs_font, fstype,
                              "gs_copy_font(copied font)");
+    if (copied) {
+        /* Initialize the copied font - minumum we need
+         * so we can safely free it in the "fail:" case
+         * below
+         */
+        memcpy(copied, font, fssize);
+        copied->next = copied->prev = 0;
+        copied->memory = mem;
+        copied->is_resource = false;
+        gs_notify_init(&copied->notify_list, mem);
+        copied->base = copied;
+    }
     cfdata = gs_alloc_struct(mem, gs_copied_font_data_t,
                             &st_gs_copied_font_data,
                             "gs_copy_font(wrapper data)");
@@ -2087,15 +2102,7 @@ gs_copy_font(gs_font *font, const gs_matrix *orig_matrix, gs_memory_t *mem, gs_f
                              "gs_copy_font(FullName)"))) < 0
         )
         goto fail;
-
-    /* Initialize the copied font. */
-
-    memcpy(copied, font, fssize);
-    copied->next = copied->prev = 0;
-    copied->memory = mem;
-    copied->is_resource = false;
-    gs_notify_init(&copied->notify_list, mem);
-    copied->base = copied;
+    /* set the remainder of the copied font contents */
     copied->FontMatrix = *orig_matrix;
     copied->client_data = cfdata;
     copied->procs = copied_font_procs;

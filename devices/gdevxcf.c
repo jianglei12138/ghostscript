@@ -709,11 +709,13 @@ xcf_get_params(gx_device * pdev, gs_param_list * plist)
         prgbs.size = strlen(xdev->profile_rgb_fn),
         prgbs.persistent = false;
     code = param_write_string(plist, "ProfileRgb", &prgbs);
+    if (code < 0)
+        return code;
 
     pcmyks.data = (const byte *)xdev->profile_cmyk_fn,
         pcmyks.size = strlen(xdev->profile_cmyk_fn),
         pcmyks.persistent = false;
-    code = param_write_string(plist, "ProfileCmyk", &prgbs);
+    code = param_write_string(plist, "ProfileCmyk", &pcmyks);
 
     return code;
 }
@@ -1042,7 +1044,7 @@ xcf_get_color_comp_index(gx_device * dev, const char * pname, int name_size,
 /* ------ Private definitions ------ */
 
 /* All two-byte quantities are stored MSB-first! */
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
 #  define assign_u16(a,v) a = (v)
 #  define assign_u32(a,v) a = (v)
 #else
@@ -1411,7 +1413,7 @@ xcf_write_footer(xcf_write_ctx *xc, xcf_device *pdev)
         int offset;
         int tile_idx;
 
-        dmlprintf2(pdev->memory, "actual tile offset: %d %d\n", xc->offset, (int)arch_sizeof_color_index);
+        dmlprintf2(pdev->memory, "actual tile offset: %d %d\n", xc->offset, (int)ARCH_SIZEOF_COLOR_INDEX);
         xcf_write_32(xc, xc->width);
         xcf_write_32(xc, xc->height);
         xcf_write_32(xc, separation_name->size + 1);

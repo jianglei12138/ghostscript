@@ -183,7 +183,7 @@ userdict /.nativeFontmap .FontDirectory maxlength dict put
     } if
     {           % Stack: key file
                 % Protect ourselves against syntax errors here.
-      dup { token } stopped { pop //false exit } if
+      dup { token } stopped { //false exit } if
       not { //false exit } if               % end of file
       dup /eexec eq { pop //false exit } if       % reached eexec section
       dup /Subrs eq { pop //false exit } if       % Subrs without eexec
@@ -410,7 +410,7 @@ systemdict /NONATIVEFONTMAP known .setnativefontmapbuilt
             pop
           }
           {
-            3 -1 roll pop
+            counttomark 1 add -1 roll pop
             not { dup 0 get } if  % stack: (newname) [ (name) (path) ]
             % DEBUG { (  found ) print dup print (\n) print flush } if
             % add entry to the fontmap
@@ -1131,8 +1131,13 @@ $error /SubstituteFont { } put
             {   % Yes.  Stack: origfontname fontdirectory path filefontname fontdict
               dup 4 -1 roll /PathLoad exch //.putgstringcopy exec
                       % Stack: origfontname fontdirectory filefontname fontdict
-              3 -1 roll pop exch
-                      % Stack: origfontname fontdict filefontname
+              3 -1 roll pop
+                      % Stack: origfontname filefontname fontdict
+              dup /FontName get dup FontDirectory exch .forceundef
+              GlobalFontDirectory exch .forceundef
+              dup length dict .copydict dup 3 index /FontName exch put
+              2 index exch definefont
+              exch
               QUIET
                { pop
                }

@@ -428,7 +428,7 @@ static int gsijs_fill_path(gx_device * dev, const gs_imager_state * pis,
 
    ijsdev->k_path = 0;
 
-   return 0;
+   return code;
 }
 
 static int gsijs_stroke_path(gx_device * dev, const gs_imager_state * pis,
@@ -826,6 +826,10 @@ gsijs_open(gx_device *dev)
     code = gdev_prn_open(dev);
     if (code < 0)
         return code;
+
+    while (dev->child)
+        dev = dev->child;
+    ijsdev = (gx_device_ijs *)dev;
 
     if (use_outputfd) {
         /* Note: dup() may not be portable to all interesting IJS

@@ -164,8 +164,9 @@ pdfdict begin
     5 1 roll
     4 { % Bug 694542
       dup type dup /integertype ne exch /realtype ne and {
-         (   **** Warning: replacing malformed number ') pdfformaterror pdfstring cvs pdfformaterror
+         (   **** Error: replacing malformed number ') pdfformaterror pdfstring cvs pdfformaterror
          (' with 0.\n) pdfformaterror
+         (               Output may be incorrect.\n) pdfformaterror
          0
       } if
       4 1 roll
@@ -186,6 +187,9 @@ pdfdict begin
     } {
       [ exch { oforce resolvefunction } forall ]
     } ifelse
+  } bind
+  /Extend {
+    mark exch {oforce} forall ]
   } bind
 .dicttomark readonly def
 
@@ -214,6 +218,15 @@ pdfdict begin
 /resolvesh {		% <shname> resolvesh <shading>
                         % <shname> resolvesh <null>
   Page /Shading rget {
+  %% Horrible hacky fix, see /DoImage later in ths file for more information
+  %%
+  dup /ColorSpace known {
+    dup /ColorSpace get dup type /arraytype eq {
+      exch dup length dict copy exch
+      dup length array copy /ColorSpace exch 2 index 3 1 roll put
+    } {pop} ifelse
+  } if
+
     resolveshading
   } {
     //null
@@ -331,8 +344,9 @@ currentdict /.resolveht6 undef
     exch pop exec
   } {
     =string cvs
-    (   **** Warning: Incorrect halftone type ) exch concatstrings
+    (   **** Error: Incorrect halftone type ) exch concatstrings
     (. Using defailt.\n) concatstrings pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
     gsave .setdefaulthalftone currenthalftone grestore
   } ifelse
 } bdef
@@ -451,7 +465,7 @@ end
   /SMask {
     {gssmask} PDFSTOPONERROR { exec //false } { stopped } ifelse
     {
-      pop (\n   **** Warning: Error in SMask during ExtGState.\n)
+      pop (\n   **** Error in SMask during ExtGState. Ignoring the mask, output may be incorrect.\n)
       pdfformaterror
     } if
   }
@@ -478,8 +492,9 @@ end
      dup /G knownogetdict
      {pop}
      {
-        (   **** Warning: Dropping invalid transparency SMask group\n)
+        (   **** Error: Ignoring invalid transparency SMask group\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
         % replace the invalid SMask object
         pop /None
      } ifelse
@@ -504,8 +519,9 @@ end
     dup /BC knownoget {
       dup /Background exch 4 2 roll
       1 index /G oget /Group knownoget not {
-        (   **** Warning: Dropping transparency group XObject without /Group attribute.\n)
+        (   **** Error: Ignoring a transparency group XObject without /Group attribute.\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
         cleartomark //null exit
       } if
       gsave //nodict begin
@@ -759,8 +775,9 @@ currentdict /csncompdict undef
     %% profile. Certain kinds of profile can't determine the numebr of components
     %% and in ths case we must not override the /N value.
     dup 0 gt {
-         (   **** Warning: ICCbased space /N value does not match the ICC profile.\n) pdfformaterror
-         (                 Using the number of channles from the profile.\n) pdfformaterror
+         (   **** Error: ICCbased space /N value does not match the ICC profile.\n) pdfformaterror
+         (                 Using the number of channels from the profile.\n) pdfformaterror
+         (                 Output may be incorrect.\n) pdfformaterror
         1 index exch /N exch put
     }{
       pop
@@ -838,7 +855,8 @@ currentdict /csncompdict undef
     aload pop
     1 index -1 eq {
       exch pop 255 exch
-      (   **** Warning: Assuming that max color index -1 means 255.\n) pdfformaterror
+      (   **** Error: Highest color index given as -1. Assuming this actually means 255.\n) pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
     } if
     3 -1 roll oforce resolvecolorspace
                 % Stack: /Indexed hival lookup basespace
@@ -875,8 +893,9 @@ currentdict /csncompdict undef
         exch //true resolvestream
         1 index readstring not {
           % The string is padded with 0s
-          (   **** Warning: Short look-up table in the Indexed color space was padded with 0's.\n)
+          (   **** Error: Short look-up table in the Indexed color space was padded with 0's.\n)
           pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
         } if
         pop
                 % Stack: filepos /Indexed basespace hival (...)
@@ -898,8 +917,9 @@ currentdict /csncompdict undef
   } bdef
 
   /I { % Bug 689815
-    (   **** Warning: The name /Indexed cannot be abbreviated to /I in the color space\n)
+    (   **** Error: The name /Indexed cannot be abbreviated to /I in the color space\n)
     pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
     dup 0 /Indexed put
     //Indexed exec
   } bdef
@@ -926,9 +946,10 @@ currentdict end readonly def
 .dicttomark readonly def
 /csresolve {		% <csresourcename> csresolve <cspace> <true> | <false>
   dup type /nametype ne {
-    (\n   **** Warning: CS/cs (setcolorspace) operand not a name: ) pdfformaterror
+    (\n   **** Error: CS/cs (setcolorspace) operand not a name: ) pdfformaterror
     dup stderrfile dup 3 -1 roll write==only flushfile
     ( ****\n) pdfformaterror
+    (                 Output may be incorrect.\n) pdfformaterror
     dup type /arraytype eq {	% Adobe InDesign + PDF Library has array
       resolvecolorspace
     } if //true
@@ -939,8 +960,9 @@ currentdict end readonly def
       //csnames 1 index known {
         //true
       } {
-        (   **** Warning: Undefined space resource: /)
+        (   **** Error: Undefined space resource: /)
         exch .namestring concatstrings (\n) concatstrings pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
         //false
       } ifelse
     } ifelse
@@ -950,12 +972,13 @@ currentdict end readonly def
 /resolvecolorspace {	% <cspace> resolvecolorspace <cspace'>
   dup type /dicttype eq {
       dup /N known {
-      (   **** ICCBased color space is a bare stream dictionary\n) pdfformaterror
+      (   **** ICCBased color space is a bare stream dictionary\n) pdfformatwarning
       [ /ICCBased 3 -1 roll ] ICCBased-resolve exec
       //false
     } {
       dup /ColorSpace knownoget {
-        (   **** Strange color space <</ColorSpace /Device...>>\n) pdfformaterror
+        (   **** Error: unrecognised color space <</ColorSpace /Device...>>\n) pdfformaterror
+        (                 Output may be incorrect.\n) pdfformaterror
         exch pop //true
       } {
         //true
@@ -1035,8 +1058,9 @@ currentdict end readonly def
     currentdict /n known not or
     Q
   } loop {
-    (   **** Warning: Pattern stream has unbalanced q/Q operators \(too many q's\)\n)
+    (   **** Error: Pattern stream has unbalanced q/Q operators \(too many q's\)\n)
     pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
   } if
   pop
 
@@ -1113,7 +1137,7 @@ currentdict end readonly def
   PDFDEBUG { pdfdict /PDFSTEPcount .knownget { 1 le } { //true } ifelse { (%Pattern: ) print dup === flush } if } if
 } bdef
 
-/ignore_color_op  (   **** Warning: Ignoring a color operation in a cached context.\n) readonly def
+/ignore_color_op  (   **** Error: Ignoring a color operation in a cached context.\n               Output may be incorrect.\n) readonly def
 
 drawopdict begin
   /g  { .incachedevice { % Bug 689302
@@ -1260,7 +1284,7 @@ drawopdict begin
           .shfill
         } stopped {
           pop
-          (   **** Warning: Dropping incorrect smooth shading object.\n)
+          (   **** Error: Ignoring invalid smooth shading object, output may be incorrect.\n)
           pdfformaterror
         } if
         SoftMask //null ne { .endtransparencygroup } if
@@ -1383,8 +1407,9 @@ end
     dup 0 get /BitsPerComponent exch def
     1 1 JPXComponents 1 sub {
       1 index exch get BitsPerComponent eq not {
-        (   **** Warning: colour channels do not all have the same colour depth\n)
+        (   **** Error: JPX image colour channels do not all have the same colour depth\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
       } if
     } for
 
@@ -1403,8 +1428,9 @@ end
         //jp2_csp_dict exch .knownget {
           exec /ColorSpace exch def        % file len-7
         } {
-          (   **** Warning: Unknown enumerated color space in JPX stream.\n)
+          (   **** Error: Unknown enumerated color space in JPX stream.\n)
           pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
         } ifelse
       } {
         dup 2 eq exch 3 eq or {
@@ -1412,16 +1438,21 @@ end
           /JPXICC exch def
           0                                % file 0
         } {
-          (   **** Warning: Unknown color space method in JPX stream.\n)
+          (   **** Error: Unknown color space method in JPX stream.\n)
           pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
         } ifelse
       } ifelse
     } if
   } bdef
 
   % Palette colors are decoded by the library.
-  % For now, ignore 'pclr' table.
-  /pclr { } bdef
+  /pclr {
+    4 sub
+    1 index (1234) readstring pop
+    3 get 16#7F and 1 add
+    /BitsPerComponent exch def
+  } bdef
 
   /cdef {
     pop
@@ -1525,15 +1556,17 @@ currentdict /jp2_csp_dict .undef
 
 /last-ditch-bpc-csp {
   currentdict /BitsPerComponent oknown not {
-    (   **** Warning: image has no /BitsPerComponent key; assuming 8 bit.\n)
-    pdfformaterror
+    (   **** Error: image has no /BitsPerComponent key; assuming 8 bit.\n)
+   pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
     /BitsPerComponent 8 def
   } if
 
   currentdict /ColorSpace knownoget not {
     dup /ColorSpace knownoget not {
-      (   **** Warning: image has no /ColorSpace key; assuming /DeviceRGB.\n)
+      (   **** Error: image has no /ColorSpace key; assuming /DeviceRGB.\n)
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
       /DeviceRGB
     } if
   } if
@@ -1612,7 +1645,7 @@ currentdict /jp2_csp_dict .undef
         dup dup /ColorSpace get /ImageDictColorSpace exch put
       } if
       dup /IDFlag known {
-        (   **** Warning: PDF spec bans inline JPX images.\n) pdfformaterror
+        (   **** Warning: PDF spec bans inline JPX images.\n) pdfformatwarning
         % Inline stream is not positionable. Cannot get ColorSpace.
       } {
         % Drop the last filter (JPXDecode) from the pipeline
@@ -1821,13 +1854,34 @@ currentdict /add-to-last-param undef
 currentdict /last-ditch-bpc-csp undef
 
 /DoImage {
+  %% Bug #696439. This is incredibly icky. When we find indirect obects we resolve them
+  %% and store the resolved object in the containing object. This means that we retain
+  %% the image dicionary here until the end of job. Potentially wasteful. Even worse though
+  %% is the case where the image has a ColorSpace which is not an indirect object, but *is*
+  %% an ICCBased colour space. In ths case we end up resolving the colour space and storing it
+  %% here. Unfortunately, we use a ReusableStreamDecode filter on the ICC profile, which means
+  %% we end up retaining the memory for that too. ICC profiles can be large, and if there are a
+  %% lot of places where they get used, we can exhaust memory.
+  %% Here we check if the ColorSpace is an array object, if it is we *copy* the image dictionary
+  %% and use the copy instead. The copy is (eventually) discarded so we don't retain the ICC profile
+  %% and don't exhaust memory. Note that we have to copy the actual colour space array too, copying
+  %% the dictionary just copies the opriginal array as well.
+  %%
+  dup /ColorSpace known {
+    dup /ColorSpace get dup type /arraytype eq {
+      exch dup length dict copy exch
+      dup length array copy /ColorSpace exch 2 index 3 1 roll put
+    } {pop} ifelse
+  } if
+
   checkaltimage dup length 6 add dict  % <<image>> <<>>
   1 index /SMask knownoget {           % <<image>> <<>> <<sm>>
     dup 3 index ne {                   % <<image>> <<>> <<sm>> <<sm>>
       1 index exch /SMask exch put
     } {
       pop
-      (   **** Warning: ignoring recursive /SMask attribute.\n) pdfformaterror
+      (   **** Error: ignoring recursive /SMask attribute.\n) pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
     } ifelse
   } if
   1 index /Mask knownoget { 1 index exch /Mask exch put } if
@@ -1846,8 +1900,9 @@ currentdict /last-ditch-bpc-csp undef
       //false 1 index {
         type /integertype ne or
       } forall {
-        (\n   **** Warning: Some elements of Mask array are not integers.\n)
+        (\n   **** Error: Some elements of Mask array are not integers.\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
         [ exch { 0.5 add cvi } forall ]  % following AR4, 5, 6 implementation
       } if
     } if
@@ -1857,8 +1912,9 @@ currentdict /last-ditch-bpc-csp undef
       % stack: max_value result_bool value
       dup 0 lt exch 3 index gt or or
     } forall exch pop {
-      (   **** Warning: Some elements of Mask array are out of range.\n)
+      (   **** Error: Some elements of Mask array are out of range.\n)
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
 
       ColorSpace dup type /arraytype eq { 0 oget } if /Indexed eq
       BitsPerComponent 1 eq and {
@@ -2018,13 +2074,15 @@ currentdict /last-ditch-bpc-csp undef
   PDFSTOPONERROR { exec //false } { stopped } ifelse {
     dup type /dicttype eq { pop } if % Sometimes image fails to restore the stack
     $error /errorname get dup /ioerror eq {
-      pop (\n   **** Warning: File has insufficient data for an image.\n)
+      pop (\n   **** Error: File has insufficient data for an image.\n)
       pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
     } {
-      (\n   **** Warning: File encountered ')
+      (\n   **** Error: File encountered ')
       exch 40 string cvs concatstrings
       (' error while processing an image.\n) concatstrings
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
     } ifelse
   } if
                 % Close the input stream, unless it is PDFfile or
@@ -2055,8 +2113,9 @@ currentdict /last-ditch-bpc-csp undef
       /integertype eq exch
       /realtype eq or not
       {
-        (\n   **** Warning: Invalid element in /Form XObject matrix.\n)
+        (\n   **** Error: Invalid element in /Form XObject matrix.\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
         Matrix exch 0.00 put
       }
       { pop }
@@ -2064,8 +2123,9 @@ currentdict /last-ditch-bpc-csp undef
     } for
   } ifelse
   currentdict /BBox known not {
-        (\n   **** Warning: Required entry /BBox not present in Form.\n)
+        (\n   **** Error: Required entry /BBox not present in Form.\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
         /BBox [0 1 0 1]
   } if
   currentdict end { oforce } forall
@@ -2089,8 +2149,9 @@ currentdict /last-ditch-bpc-csp undef
     countdictstack eq {end} if
   } loop
   1 gt {
-    (   **** Warning: Form stream has unbalanced q/Q operators \(too many q's\)\n)
+    (   **** Error: Form stream has unbalanced q/Q operators \(too many q's\)\n)
     pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
   } if
   pop
   /pdfemptycount exch store
@@ -2169,12 +2230,14 @@ drawopdict begin
     %% Of course, the file is badly broken, but 'Acrobat can open it....'
     currentdict /TextSaveMatrix known {
       gsave
-      (   **** Illegal; Executing Do inside a text block, attempting to recover\n) pdfformaterror
+      (   **** Error: Executing Do inside a text block, attempting to recover\n) pdfformaterror
       currentdict /TextSaveMatrix get setmatrix
+      (               Output may be incorrect.\n) pdfformaterror
     } if
     currentdict /qTextSaveMatrix known {
       gsave
-      (   **** Illegal; Executing Do inside a text block, attempting to recover\n) pdfformaterror
+      (   **** Error: Executing Do inside a text block, attempting to recover\n) pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
       currentdict /qTextSaveMatrix get setmatrix
     } if
     setfillblend
@@ -2197,14 +2260,12 @@ drawopdict begin
     } {
         % This should cause an error, but Acrobat Reader can
         % continue, so we do too.
-      (   **** Undefined XObject resource: )
+      (   **** Error: Undefined XObject resource: )
       exch =string cvs concatstrings (\n) concatstrings
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
     } ifelse
     PDFfile exch setfileposition
-%    currentdict /TextSaveMatrix known currentdict /TextSaveMatrix known or {
-%      grestore
-%    } if
   } bdef
 end
 
@@ -2246,6 +2307,24 @@ currentdict /ocg_pocs .undef
 drawopdict begin
   /BI { mark } bdef
   /ID {
+    gsave
+    %% Bug 696547, related to Bug 695897 (see /Do above) This file has an inline image inside
+    %% a text block. Here we attempt to detect and recover from this by setting the
+    %% CTM to the matrix we saved before the text block. NB we update the 'TextSaveMatrix'
+    %% or 'qTextSaveMatrix' whenever a 'cm' is issued, even if we are in a text block, so
+    %% these matrices 'ought' to be correct.
+    %% Of course, the file is badly broken, but 'Acrobat can open it....'
+    currentdict /TextSaveMatrix known {
+      (   **** Error: Executing ID inside a text block, attempting to recover\n) pdfformaterror
+      currentdict /TextSaveMatrix get setmatrix
+      (               Output may be incorrect.\n) pdfformaterror
+    } if
+    currentdict /qTextSaveMatrix known {
+      (   **** Error: Executing ID inside a text block, attempting to recover\n) pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
+      currentdict /qTextSaveMatrix get setmatrix
+    } if
+
     counttomark 2 idiv dup 7 add dict begin {
       exch //unabbrevkeydict 1 index .knownget { exch pop } if
       exch unabbrevvalue def
@@ -2294,6 +2373,7 @@ drawopdict begin
           } ifelse
       } ifelse
     } loop
+    grestore
   } bdef
 end
 
@@ -2331,14 +2411,16 @@ end
 drawopdict begin
   /QBT {
     Q BT
-    (   **** Warning: invalid operator QBT processed as Q BT .\n)
+    (   **** Error: invalid operator QBT processed as Q BT .\n)
     pdfformaterror  % Bug 690089
+    (               Output may be incorrect.\n) pdfformaterror
   } def
 
   /. {
     0.
-    (   **** Warning: invalid operator . processed as number 0. .\n)
+    (   **** Error: invalid operator . processed as number 0. .\n)
     pdfformaterror  % Bug 690730
+    (               Output may be incorrect.\n) pdfformaterror
   } def
 end
 
@@ -2386,8 +2468,9 @@ end
             pop
             false
           }{
-            (invalid color specified for annotation /C entry)
+            (   **** Error: invalid color specified for annotation /C entry)
             pdfformaterror false
+            (               Output may be incorrect.\n) pdfformaterror
           } ifelse
         } ifelse
       } ifelse
@@ -2431,8 +2514,9 @@ end
         //true
       } ifelse                % <annot> [border] <bad?>
     } ifelse {
-      (   **** Warning: Wrong annotation border object, no border is drawn.\n)
+      (   **** Error: Invalids annotation border object, border has not been drawn.\n)
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
       pop { 0 0 0 }
     } if
     dup type /dicttype eq {
@@ -2600,8 +2684,9 @@ end
 %  } if
   dup /AP knownoget {
     dup /N known not {
-      (   **** Appearance dictionary (AP) lacks the mandatory normal (N) appearance.\n)
+      (   **** Error: Appearance dictionary (AP) lacks the mandatory normal (N) appearance.\n)
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
     } if
     //false
     [/N /R /D] {
@@ -2656,8 +2741,9 @@ end
         } if
         DoForm Q
       } {
-        (   **** Annotation's appearance is not a dictionary.\n)
+        (   **** Error: Annotation's appearance is not a dictionary.\n)
         pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
       } ifelse
     } if
   } {
@@ -2722,8 +2808,9 @@ currentdict /set_bc_color undef
           3 -1 roll sub         % <<>> x y  x0 x1 y1-y0
           3 1 roll exch sub     % <<>> x y  y1-y0 x1-x0
           2 copy mul 0 eq {
-            (   **** Warning: /BBox has zero width or height, which is not allowed.\n)
+            (   **** Error: /BBox has zero width or height, which is not allowed.\n)
             pdfformaterror
+            (               Output may be incorrect.\n) pdfformaterror
             pop pop pop pop 1 1	% zero size -- revert to unity scaling
           } {
             3 1 roll div        % <<>> x x1-x0 y/(y1-y0)
@@ -2741,8 +2828,9 @@ currentdict /set_bc_color undef
     } ifelse			% if we have /AP
     3 -1 roll pop
   } {
-    (   **** Warning: /Annot dict is missing required /Rect entry.\n)
+    (   **** Error: /Annot dict is missing required /Rect entry.\n)
     pdfformaterror
+    (               Output may be incorrect.\n) pdfformaterror
     pop 1 1
   } ifelse
 } bdef
@@ -2795,7 +2883,13 @@ currentdict /set_bc_color undef
 
   /Link { % <annot> -> <false>
     dup drawborder dup calc_annot_scale
-    2 copy mul 0 ne {3 -1 roll drawwidget //false}{pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}ifelse
+    2 copy mul 0 ne
+    {3 -1 roll drawwidget //false}
+    {
+      pop pop
+      (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
+    }ifelse
   } bdef
 
   /Ink { % <annot> -> <annot> <true>
@@ -2820,7 +2914,11 @@ currentdict /set_bc_color undef
               } forall
             } if
         }
-        {pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}
+        {
+          pop pop
+          (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
+        }
         ifelse
       } if
       //false
@@ -2855,7 +2953,11 @@ currentdict /set_bc_color undef
               } repeat
             } if
         }
-        {pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}
+        {
+          pop pop
+          (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
+        }
         ifelse
       } if
       //false
@@ -2890,7 +2992,11 @@ currentdict /set_bc_color undef
               } repeat
             } if
         }
-        {pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}
+        {
+          pop pop
+          (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
+        }
         ifelse
       } if
       //false
@@ -2993,7 +3099,11 @@ currentdict /set_bc_color undef
               } repeat
             } if
         }
-        {pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}
+        {
+          pop pop
+          (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
+        }
         ifelse
       } if
       //false
@@ -3030,7 +3140,11 @@ currentdict /set_bc_color undef
           9 0 moveto 9 5 lineto 14 5 lineto
           stroke
       }
-      {pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}
+      {
+        pop pop
+        (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
+      }
       ifelse
       //false
     } ifelse
@@ -3075,8 +3189,10 @@ currentdict /set_bc_color undef
                 pop
                 false
               }{
-                (invalid color specified for FreeText annotation /C entry)
-                pdfformaterror false
+                (   **** Error: invalid color specified for FreeText annotation /C entry)
+                pdfformaterror
+                (               Output may be incorrect.\n) pdfformaterror
+                false
               } ifelse
             } ifelse
           } ifelse
@@ -3337,7 +3453,11 @@ currentdict /set_bc_color undef
           //stamp_dict 1 index known not { exch pop /Draft exch } if
           //stamp_dict exch get exec
       }
-      {pop pop (   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}
+      {
+        pop pop
+        (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+        (               Output may be incorrect.\n) pdfformaterror
+      }
       ifelse
       //false
     } ifelse
@@ -3352,12 +3472,20 @@ currentdict end readonly def
     dup dup /Subtype knownoget {
       //drawannottypes exch .knownget { exec } { //true } ifelse
       {
-        dup calc_annot_scale 2 copy mul 0 ne {3 -1 roll drawwidget}{(   **** Warning: ignoring annotation with scale factor of 0\n) pdfformaterror}ifelse % Draw rejected annots as widgets
+        dup calc_annot_scale 2 copy mul 0 ne
+        {
+          3 -1 roll drawwidget
+        }
+        {
+          (   **** Error: ignoring annotation with scale factor of 0\n) pdfformaterror
+          (               Output may be incorrect.\n) pdfformaterror
+        }ifelse % Draw rejected annots as widgets
       } if			% type known
     } {
       pop
-      (   **** Warning: /Annot dict without required /Subtype entry is ignored.\n)
+      (   **** Error: Ignoring /Annot dict without required /Subtype entry.\n)
       pdfformaterror
+      (               Output may be incorrect.\n) pdfformaterror
     } ifelse
     grestore
   } if pop			% annotvisible
@@ -3489,12 +3617,17 @@ currentdict end def
 
 /draw_form_field { % <field> draw_form_field -
   dup /Kids knownoget {                       % field []
-    dup 0 oget /Parent knownoget {            % field [] kid
-      pop % mon-terminal field                % field []
-      exch pop                                % []
-      { oforce draw_form_field } forall
+    dup length 0 gt {
+      dup 0 oget /Parent knownoget {            % field [] kid
+        pop % mon-terminal field                % field []
+        exch pop                                % []
+        { oforce draw_form_field } forall
+      } {
+        pop draw_terminal_field % separate annots % -
+      } ifelse
     } {
-      pop draw_terminal_field % separate annots % -
+        (  **** Error: Ignoring empty /Kids array in Form field.\n) pdfformaterror
+        (              Output may be incorrect.\n) pdfformaterror
     } ifelse
   } {
     draw_terminal_field % merged annotation   % -

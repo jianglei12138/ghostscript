@@ -65,7 +65,7 @@ typedef struct long_param_def_s {
     int (*set)(i_ctx_t *, long);
 } long_param_def_t;
 
-#if arch_sizeof_long > arch_sizeof_int
+#if ARCH_SIZEOF_LONG > ARCH_SIZEOF_INT
 #  define MAX_UINT_PARAM max_uint
 #  define MIN_INT_PARAM min_int
 #else
@@ -216,7 +216,7 @@ static const long_param_def_t system_long_params[] =
 static bool
 current_ByteOrder(i_ctx_t *i_ctx_p)
 {
-    return !arch_is_big_endian;
+    return !ARCH_IS_BIG_ENDIAN;
 }
 static const bool_param_def_t system_bool_params[] =
 {
@@ -572,11 +572,11 @@ static const long_param_def_t user_long_params[] =
      current_MaxFontItem, set_MaxFontItem},
     {"MinFontCompress", MIN_INT_PARAM, MAX_UINT_PARAM,
      current_MinFontCompress, set_MinFontCompress},
-    {"MaxOpStack", 0, MAX_UINT_PARAM,
+    {"MaxOpStack", -1, max_long,
      current_MaxOpStack, set_MaxOpStack},
-    {"MaxDictStack", 0, MAX_UINT_PARAM,
+    {"MaxDictStack", -1, max_long,
      current_MaxDictStack, set_MaxDictStack},
-    {"MaxExecStack", 0, MAX_UINT_PARAM,
+    {"MaxExecStack", -1, max_long,
      current_MaxExecStack, set_MaxExecStack},
     {"MaxLocalVM", 0, max_long,
      current_MaxLocalVM, set_MaxLocalVM},

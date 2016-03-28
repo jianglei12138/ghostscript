@@ -356,7 +356,7 @@ pdf_put_clip_path_list_elem(gx_device_pdf * pdev, gx_cpath_path_list *e,
         gs_path_enum *cenum, gdev_vector_dopath_state_t *state,
         gs_fixed_point vs[3])
 {   /* This recursive function provides a reverse order of the list elements. */
-    int pe_op;
+    int pe_op, segments = 0;
 
     if (e->next != NULL) {
         int code = pdf_put_clip_path_list_elem(pdev, e->next, cenum, state, vs);
@@ -365,9 +365,12 @@ pdf_put_clip_path_list_elem(gx_device_pdf * pdev, gx_cpath_path_list *e,
             return code;
     }
     gx_path_enum_init(cenum, &e->path);
-    while ((pe_op = gx_path_enum_next(cenum, vs)) > 0)
+    while ((pe_op = gx_path_enum_next(cenum, vs)) > 0) {
         gdev_vector_dopath_segment(state, pe_op, vs);
-    pprints1(pdev->strm, "%s n\n", (e->rule <= 0 ? "W" : "W*"));
+        segments++;
+    }
+    if (segments)
+        pprints1(pdev->strm, "%s n\n", (e->rule <= 0 ? "W" : "W*"));
     if (pe_op < 0)
         return pe_op;
     return 0;
@@ -1369,7 +1372,7 @@ gdev_pdf_stroke_path(gx_device * dev, const gs_imager_state * pis,
                  * width scaled by the CTM before the text, either of which would be wrong.
                  */
                 scale = 72 / pdev->HWResolution[0];
-                scale *= pis->ctm.xx;
+                scale *= fabs(pis->ctm.xx);
                 pprintg1(s, "%g w\n", (pis->line_params.half_width * 2) * (float)scale);
                 /* Some trickery here. We have altered the colour, text render mode and linewidth,
                  * we don't want those to persist. By switching to a stream context we will flush the

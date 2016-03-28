@@ -176,10 +176,8 @@ gx_default_text_begin(gx_device * dev, gs_imager_state * pis,
     penum->show_gstate =
         (propagate_charpath && (pgs->in_charpath != 0) ?
          pgs->show_gstate : pgs);
-    if((operation &
-         (TEXT_DO_NONE | TEXT_RETURN_WIDTH | TEXT_RENDER_MODE_3)) ==
-         (TEXT_DO_NONE | TEXT_RETURN_WIDTH)) {
-        /* This is stringwidth. */
+    if (!(~operation & (TEXT_DO_NONE | TEXT_RETURN_WIDTH))) {
+        /* This is stringwidth (or a PDF with text in rendering mode 3) . */
         gx_device_null *dev_null =
             gs_alloc_struct(mem, gx_device_null, &st_device_null,
                             "stringwidth(dev_null)");
@@ -521,7 +519,7 @@ set_cache_device(gs_show_enum * penum, gs_state * pgs, double llx, double lly,
         static const fixed max_cdim[3] =
         {
 #define max_cd(n)\
-            (fixed_1 << (arch_sizeof_short * 8 - n)) - (fixed_1 >> n) * 3
+            (fixed_1 << (ARCH_SIZEOF_SHORT * 8 - n)) - (fixed_1 >> n) * 3
             max_cd(0), max_cd(1), max_cd(2)
 #undef max_cd
         };
@@ -1301,6 +1299,7 @@ static int
 show_finish(gs_show_enum * penum)
 {
     gs_state *pgs = penum->pgs;
+    int code = 0, rcode;
 
     if ((penum->text.operation & TEXT_DO_FALSE_CHARPATH) ||
         (penum->text.operation & TEXT_DO_TRUE_CHARPATH)) {
@@ -1310,17 +1309,16 @@ show_finish(gs_show_enum * penum)
     if (penum->auto_release)
         penum->procs->release((gs_text_enum_t *)penum, "show_finish");
 
-    if((penum->text.operation &
-         (TEXT_DO_NONE | TEXT_RETURN_WIDTH | TEXT_RENDER_MODE_3)) ==
-         (TEXT_DO_NONE | TEXT_RETURN_WIDTH)) {
-        /* Save the accumulated width before returning, */
-        /* and undo the extra gsave. */
-        int code = gs_currentpoint(pgs, &penum->returned.total_width);
-        int rcode = gs_grestore(pgs);
+    if (!SHOW_IS_STRINGWIDTH(penum))
+       return 0;
 
-        return (code < 0 ? code : rcode);
-    }
-    return 0;
+    /* Save the accumulated width before returning, if we are not in PDF text rendering mode 3, */
+    /* and undo the extra gsave. */
+    if (!(penum->text.operation & TEXT_RENDER_MODE_3))
+        code = gs_currentpoint(pgs, &penum->returned.total_width);
+    rcode = gs_grestore(pgs);
+
+    return (code < 0 ? code : rcode);
 }
 
 /* Release the structure. */
@@ -1468,7 +1466,7 @@ show_state_setup(gs_show_enum * penum)
             double fdx = pgs->char_tm.tx - pgs->ctm.tx;
             double fdy = pgs->char_tm.ty - pgs->ctm.ty;
 
-#define int_bits (arch_sizeof_int * 8 - 1)
+#define int_bits (ARCH_SIZEOF_INT * 8 - 1)
             if (!(f_fits_in_bits(fdx, int_bits) &&
                   f_fits_in_bits(fdy, int_bits))
                 )

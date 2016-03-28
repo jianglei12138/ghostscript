@@ -16,6 +16,7 @@
 
 #include "gxdownscale.h"
 #include "gserrors.h"
+#include "string_.h"
 #include "gdevprn.h"
 
 /* Error diffusion data is stored in errors block.
@@ -1553,6 +1554,98 @@ gx_downscaler_scale_rounded(int width, int factor)
     return (width*up + down-1)/down;
 }
 
+static int get_planar_line_for_trap(void *arg, unsigned char *buf)
+{
+    gx_downscaler_t *ds = (gx_downscaler_t *)arg;
+    gs_int_rect rect;
+    gs_get_bits_params_t params; /* params (if trapping) */
+    int nc = ds->num_planes;
+    int i, code;
+    unsigned char *buf2;
+
+    rect.p.x = 0;
+    rect.p.y = ds->claptrap_y++;
+    rect.q.x = ds->dev->width;
+    rect.q.y = rect.p.y+1;
+    /* Allow for devices (like psdcmyk) that make several passes through
+     * the image. */
+    if (ds->claptrap_y == ds->dev->height)
+        ds->claptrap_y = 0;
+
+    params = *ds->claptrap_params;
+    buf2 = buf;
+    for (i = 0; i < nc; i++)
+    {
+        params.data[i] = buf2;
+        buf2 += ds->width;
+    }
+
+    code = (*dev_proc(ds->dev, get_bits_rectangle))(ds->dev, &rect, &params, NULL);
+    if (code < 0)
+        return code;
+
+    /* Now cope with the fact we might have been returned pointers */
+    for (i = 0; i < nc; i++)
+    {
+        if (params.data[i] != buf)
+            memcpy(buf, params.data[i], ds->width);
+        buf += ds->width;
+    }
+
+    return code;
+}
+
+static int check_trapping(gs_memory_t *memory, int trap_w, int trap_h,
+                          int num_comps, const int *comp_order)
+{
+#ifndef ENABLE_TRAPPING
+    if (trap_w > 0 || trap_h > 0)
+    {
+        dmprintf(memory,
+                 "Trapping is disabled in this build. To enable trapping,\n"
+                 "follow the instructions in the documentation. Please note\n"
+                 "that if you do this, you are responsible for ensuring that\n"
+                 "you have any and all patent licenses that may be required.\n");
+        return_error(gs_error_rangecheck);
+    }
+#endif
+
+    if (trap_w < 0 || trap_h < 0)
+    {
+        dmprintf(memory, "Trapping range must be >= 0");
+        return_error(gs_error_rangecheck);
+    }
+
+    if (trap_w > 0 || trap_h > 0)
+    {
+        if (comp_order == NULL)
+        {
+            emprintf(memory, "Trapping cannot be used without comp_order being defined");
+            return_error(gs_error_rangecheck);
+        }
+
+        /* Check that the comp_order we have been passed is sane */
+        {
+            char comps[GS_CLIENT_COLOR_MAX_COMPONENTS] = { 0 };
+            int i;
+
+            for (i = 0; i < num_comps; i++)
+            {
+                int n = comp_order[i];
+                if (n < 0 || n >= num_comps || comps[n] != 0)
+                    break;
+                comps[n] = 1;
+            }
+            if (i != num_comps)
+            {
+                emprintf(memory, "Illegal component order passed to trapping");
+                return_error(gs_error_rangecheck);
+            }
+        }
+    }
+    return 0;
+}
+
 int gx_downscaler_init_planar(gx_downscaler_t      *ds,
                               gx_device            *dev,
                               gs_get_bits_params_t *params,
@@ -1561,6 +1654,22 @@ int gx_downscaler_init_planar(gx_downscaler_t      *ds,
                               int                   mfs,
                               int                   src_bpc,
                               int                   dst_bpc)
+{
+    return gx_downscaler_init_planar_trapped(ds, dev, params, num_comps,
+        factor, mfs, src_bpc, dst_bpc, 0, 0, NULL);
+}
+
+int gx_downscaler_init_planar_trapped(gx_downscaler_t      *ds,
+                                      gx_device            *dev,
+                                      gs_get_bits_params_t *params,
+                                      int                   num_comps,
+                                      int                   factor,
+                                      int                   mfs,
+                                      int                   src_bpc,
+                                      int                   dst_bpc,
+                                      int                   trap_w,
+                                      int                   trap_h,
+                                      const int            *comp_order)
 {
     int                span = bitmap_raster(dev->width * src_bpc);
     int                width;
@@ -1583,6 +1692,22 @@ int gx_downscaler_init_planar(gx_downscaler_t      *ds,
     ds->src_bpc     = src_bpc;
     ds->scaled_data = NULL;
     ds->scaled_span = bitmap_raster((dst_bpc*dev->width*upfactor + downfactor-1)/downfactor);
+
+    code = check_trapping(dev->memory, trap_w, trap_h, num_comps, comp_order);
+    if (code < 0)
+        return code;
+
+    if (trap_w > 0 || trap_h > 0)
+    {
+        ds->claptrap = ClapTrap_Init(dev->memory, width, dev->height, num_comps, comp_order, trap_w, trap_h, get_planar_line_for_trap, ds);
+        if (ds->claptrap == NULL)
+        {
+            emprintf(dev->memory, "Trapping initialisation failed");
+            return_error(gs_error_VMerror);
+        }
+    }
+    else
+        ds->claptrap = NULL;
 
     memcpy(&ds->params, params, sizeof(*params));
     ds->params.raster = span;
@@ -1676,6 +1801,18 @@ int gx_downscaler_init_planar(gx_downscaler_t      *ds,
     return code;
 }
 
+static int get_line_for_trap(void *arg, unsigned char *buf)
+{
+    gx_downscaler_t *ds = (gx_downscaler_t *)arg;
+
+    /* Allow for devices (like psdcmyk) that make several passes through
+     * the image. */
+    if (ds->claptrap_y == ds->dev->height)
+        ds->claptrap_y = 0;
+
+    return (*dev_proc(ds->dev, get_bits))(ds->dev, ds->claptrap_y++, buf, NULL);
+}
+
 int gx_downscaler_init(gx_downscaler_t   *ds,
                        gx_device         *dev,
                        int                src_bpc,
@@ -1685,6 +1822,23 @@ int gx_downscaler_init(gx_downscaler_t   *ds,
                        int                mfs,
                        int              (*adjust_width_proc)(int, int),
                        int                adjust_width)
+{
+    return gx_downscaler_init_trapped(ds, dev, src_bpc, dst_bpc, num_comps,
+        factor, mfs, adjust_width_proc, adjust_width, 0, 0, NULL);
+}
+
+int gx_downscaler_init_trapped(gx_downscaler_t   *ds,
+                               gx_device         *dev,
+                               int                src_bpc,
+                               int                dst_bpc,
+                               int                num_comps,
+                               int                factor,
+                               int                mfs,
+                               int              (*adjust_width_proc)(int, int),
+                               int                adjust_width,
+                               int                trap_w,
+                               int                trap_h,
+                               const int         *comp_order)
 {
     int                size = gdev_mem_bytes_per_scan_line((gx_device *)dev);
     int                span;
@@ -1717,7 +1871,23 @@ int gx_downscaler_init(gx_downscaler_t   *ds,
     ds->factor     = factor;
     ds->num_planes = 0;
     ds->src_bpc    = src_bpc;
-    
+
+    code = check_trapping(dev->memory, trap_w, trap_h, num_comps, comp_order);
+    if (code < 0)
+        return code;
+
+    if (trap_w > 0 || trap_h > 0)
+    {
+        ds->claptrap = ClapTrap_Init(dev->memory, width, dev->height, num_comps, comp_order, trap_w, trap_h, get_line_for_trap, ds);
+        if (ds->claptrap == NULL)
+        {
+            emprintf(dev->memory, "Trapping initialisation failed");
+            return_error(gs_error_VMerror);
+        }
+    }
+    else
+        ds->claptrap = NULL;
+
     /* Choose an appropriate core */
     if (factor > 8)
     {
@@ -1829,6 +1999,9 @@ void gx_downscaler_fin(gx_downscaler_t *ds)
     ds->data = NULL;
     gs_free_object(ds->dev->memory, ds->scaled_data, "gx_downscaler(scaled_data)");
     ds->scaled_data = NULL;
+
+    if (ds->claptrap)
+        ClapTrap_Fin(ds->dev->memory, ds->claptrap);
 }
 
 int gx_downscaler_getbits(gx_downscaler_t *ds,
@@ -1841,6 +2014,9 @@ int gx_downscaler_getbits(gx_downscaler_t *ds,
 
     /* Check for the simple case */
     if (ds->down_core == NULL) {
+        if (ds->claptrap) {
+            return ClapTrap_GetLine(ds->claptrap, out_data);
+        }
         return (*dev_proc(ds->dev, get_bits))(ds->dev, row, out_data, NULL);
     }
 
@@ -1848,13 +2024,26 @@ int gx_downscaler_getbits(gx_downscaler_t *ds,
     y        = row * ds->factor;
     y_end    = y + ds->factor;
     data_ptr = ds->data;
-    do {
-        code = (*dev_proc(ds->dev, get_bits))(ds->dev, y, data_ptr, NULL);
-        if (code < 0)
-            return code;
-        data_ptr += ds->span;
-        y++;
-    } while (y < y_end);
+    if (ds->claptrap)
+    {
+        do {
+            code = ClapTrap_GetLine(ds->claptrap, data_ptr);
+            if (code < 0)
+                return code;
+            data_ptr += ds->span;
+            y++;
+        } while (y < y_end);
+    }
+    else
+    {
+        do {
+            code = (*dev_proc(ds->dev, get_bits))(ds->dev, y, data_ptr, NULL);
+            if (code < 0)
+                return code;
+            data_ptr += ds->span;
+            y++;
+        } while (y < y_end);
+    }
     
     (ds->down_core)(ds, out_data, ds->data, row, 0, ds->span);
 
@@ -1893,7 +2082,7 @@ int gx_downscaler_get_bits_rectangle(gx_downscaler_t      *ds,
     rect.q.y = ((row/upfactor) + 1) * downfactor;
 
     /* Check for the simple case */
-    if (ds->down_core == NULL) {
+    if (ds->down_core == NULL && ds->claptrap == NULL) {
         return (*dev_proc(ds->dev, get_bits_rectangle))(ds->dev, &rect, params, NULL);
     }
 
@@ -1901,7 +2090,10 @@ int gx_downscaler_get_bits_rectangle(gx_downscaler_t      *ds,
      * them. */
     memcpy(&params2, &ds->params, sizeof(params2));
     /* Get downfactor rows worth of data */
-    code = (*dev_proc(ds->dev, get_bits_rectangle))(ds->dev, &rect, &params2, NULL);
+    if (ds->claptrap)
+        code = gs_error_rangecheck; /* Always work a line at a time with claptrap */
+    else
+        code = (*dev_proc(ds->dev, get_bits_rectangle))(ds->dev, &rect, &params2, NULL);
     if (code == gs_error_rangecheck)
     {
         int i, j;
@@ -1914,7 +2106,13 @@ int gx_downscaler_get_bits_rectangle(gx_downscaler_t      *ds,
             if (rect.q.y > ds->dev->height)
                 break;
             memcpy(&params2, &ds->params, sizeof(params2));
-            code = (*dev_proc(ds->dev, get_bits_rectangle))(ds->dev, &rect, &params2, NULL);
+            if (ds->claptrap)
+            {
+                ds->claptrap_params = &params2;
+                code = ClapTrap_GetLinePlanar(ds->claptrap, &params2.data[0]);
+            }
+            else
+                code = (*dev_proc(ds->dev, get_bits_rectangle))(ds->dev, &rect, &params2, NULL);
             if (code < 0)
                 break;
             for (j = 0; j < ds->num_planes; j++) {
@@ -1948,12 +2146,20 @@ int gx_downscaler_get_bits_rectangle(gx_downscaler_t      *ds,
             params->data[plane] = scaled;
         }
     }
-    else
+    else if (ds->down_core != NULL)
     {
         /* Downscale direct into output buffer */
         for (plane=0; plane < ds->num_planes; plane++)
         {
             (ds->down_core)(ds, params->data[plane], params2.data[plane], row, plane, params2.raster);
+        }
+    }
+    else
+    {
+        /* Copy into output buffer */
+        for (plane=0; plane < ds->num_planes; plane++)
+        {
+            memcpy(params->data[plane], params2.data[plane], params2.raster);
         }
     }
 
@@ -2003,7 +2209,7 @@ static int downscaler_init_fn(void *arg_, gx_device *dev, gs_memory_t *memory, i
 
     buffer = (downscaler_process_page_buffer_t *)gs_alloc_bytes(memory, sizeof(*buffer), "downscaler process_page buffer");
     if (buffer == NULL)
-        return gs_error_VMerror;
+        return_error(gs_error_VMerror);
     memset(buffer, 0, sizeof(*buffer));
 
     if (arg->upfactor > arg->downfactor) {
@@ -2179,4 +2385,163 @@ int gx_downscaler_process_page(gx_device                 *dev,
     my_options.arg = &arg;
 
     return dev_proc(dev, process_page)(dev, &my_options);
+}
+
+int gx_downscaler_read_params(gs_param_list        *plist,
+                              gx_downscaler_params *params,
+                              int                   features)
+{
+    int code;
+    int downscale, mfs;
+    int trap_w, trap_h;
+    const char *param_name;
+    gs_param_int_array trap_order;
+
+    trap_order.data = NULL;
+
+    switch (code = param_read_int(plist,
+                                   (param_name = "DownScaleFactor"),
+                                   &downscale)) {
+        case 1:
+            break;
+        case 0:
+            if (downscale >= 1) {
+                params->downscale_factor = downscale;
+                break;
+            }
+            code = gs_error_rangecheck;
+        default:
+            param_signal_error(plist, param_name, code);
+            return code;
+    }
+
+    if (features & GX_DOWNSCALER_PARAMS_MFS)
+    {
+        switch (code = param_read_int(plist, (param_name = "MinFeatureSize"), &mfs)) {
+            case 1:
+                break;
+            case 0:
+                if ((mfs >= 0) && (mfs <= 4)) {
+                    params->min_feature_size = mfs;
+                    break;
+                }
+                code = gs_error_rangecheck;
+            default:
+                param_signal_error(plist, param_name, code);
+                return code;
+        }
+    }
+
+    if (features & GX_DOWNSCALER_PARAMS_TRAP)
+    {
+        switch (code = param_read_int(plist,
+                                      (param_name = "TrapX"),
+                                      &trap_w)) {
+            case 1:
+                break;
+            case 0:
+                if (trap_w >= 0)
+                {
+                    params->trap_w = trap_w;
+                    break;
+                }
+                code = gs_error_rangecheck;
+            default:
+                param_signal_error(plist, param_name, code);
+                return code;
+        }
+        switch (code = param_read_int(plist,
+                                      (param_name = "TrapY"),
+                                      &trap_h)) {
+            case 1:
+                break;
+            case 0:
+                if (trap_h >= 0)
+                {
+                    params->trap_h = trap_h;
+                    break;
+                }
+                code = gs_error_rangecheck;
+            default:
+                param_signal_error(plist, param_name, code);
+                return code;
+        }
+        switch (code = param_read_int_array(plist, (param_name = "TrapOrder"), &trap_order)) {
+            case 0:
+                break;
+            case 1:
+                trap_order.data = 0;          /* mark as not filled */
+                break;
+            default:
+                param_signal_error(plist, param_name, code);
+                return code;
+        }
+
+        if (trap_order.data != NULL)
+        {
+            int i;
+            int n = trap_order.size;
+
+            if (n > GS_CLIENT_COLOR_MAX_COMPONENTS)
+                n = GS_CLIENT_COLOR_MAX_COMPONENTS;
+
+            for (i = 0; i < n; i++)
+            {
+                params->trap_order[i] = trap_order.data[i];
+            }
+            for (; i < GS_CLIENT_COLOR_MAX_COMPONENTS; i++)
+            {
+                params->trap_order[i] = i;
+            }
+        }
+        else
+        {
+            /* Set some sane defaults */
+            int i;
+
+            params->trap_order[0] = 3; /* K */
+            params->trap_order[1] = 1; /* M */
+            params->trap_order[2] = 0; /* C */
+            params->trap_order[3] = 2; /* Y */
+
+            for (i = 4; i < GS_CLIENT_COLOR_MAX_COMPONENTS; i++)
+            {
+                params->trap_order[i] = i;
+            }
+        }
+    }
+
+    return 0;
+}
+
+int gx_downscaler_write_params(gs_param_list        *plist,
+                               gx_downscaler_params *params,
+                               int                   features)
+{
+    int code;
+    int ecode = 0;
+    gs_param_int_array trap_order;
+
+    trap_order.data = params->trap_order;
+    trap_order.size = GS_CLIENT_COLOR_MAX_COMPONENTS;
+    trap_order.persistent = false;
+
+    if ((code = param_write_int(plist, "DownScaleFactor", &params->downscale_factor)) < 0)
+        ecode = code;
+    if (features & GX_DOWNSCALER_PARAMS_MFS)
+    {
+        if ((code = param_write_int(plist, "MinFeatureSize", &params->min_feature_size)) < 0)
+            ecode = code;
+    }
+    if (features & GX_DOWNSCALER_PARAMS_TRAP)
+    {
+        if ((code = param_write_int(plist, "TrapX", &params->trap_w)) < 0)
+            ecode = code;
+        if ((code = param_write_int(plist, "TrapY", &params->trap_h)) < 0)
+            ecode = code;
+        if ((code = param_write_int_array(plist, "TrapOrder", &trap_order)) < 0)
+            ecode = code;
+    }
+
+    return ecode;
 }

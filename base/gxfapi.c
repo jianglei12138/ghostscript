@@ -644,7 +644,7 @@ static void
 bits_merge(byte *dest, const byte *src, uint nbytes)
 {       long *dp = (long *)dest;
         const long *sp = (const long *)src;
-        uint n = (nbytes + sizeof(long) - 1) >> arch_log2_sizeof_long;
+        uint n = (nbytes + sizeof(long) - 1) >> ARCH_LOG2_SIZEOF_LONG;
 
         for ( ; n >= 4; sp += 4, dp += 4, n -= 4 )
           dp[0] |= sp[0], dp[1] |= sp[1], dp[2] |= sp[2], dp[3] |= sp[3];
@@ -697,7 +697,7 @@ on:           switch ( (dbyte = sbyte = *++sp) ) {
                     break;
                   *dp++ = 0xff;
                   bits_on += 8 -
-                    byte_count_bits[(*zp & (zmask - 1)) + (zp[1] & -zmask)];
+                    byte_count_bits[(*zp & (zmask - 1)) + (zp[1] & -(int)zmask)];
                   ++zp;
                   i += 8;
                   goto on;
@@ -1035,10 +1035,10 @@ gs_fapi_finish_render(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, gs_f
     }
     else {
         int code;
-
         memset(&rast, 0x00, sizeof(rast));
 
-        code = I->get_char_raster(I, &rast);
+        if ((code = I->get_char_raster(I, &rast)) < 0 && code != gs_error_unregistered)
+            return code;
 
         if (!SHOW_IS(penum, TEXT_DO_NONE) && I->use_outline) {
             /* The server provides an outline instead the raster. */
@@ -1324,13 +1324,20 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
         scale_ctm.xx = dev->HWResolution[0] / 72;
         scale_ctm.yy = dev->HWResolution[1] / 72;
 
-        code = gs_matrix_invert((const gs_matrix *)&scale_ctm, &scale_ctm);
+        if ((code = gs_matrix_invert((const gs_matrix *)&scale_ctm, &scale_ctm)) < 0)
+            return code;
 
-        code = gs_matrix_multiply(ctm, &scale_ctm, &scale_mat); /* scale_mat ==  CTM - resolution scaling */
+        if ((code = gs_matrix_multiply(ctm, &scale_ctm, &scale_mat)) < 0)  /* scale_mat ==  CTM - resolution scaling */
+            return code;
 
-        code = I->get_fontmatrix(I, &scale_ctm);
-        code = gs_matrix_invert((const gs_matrix *)&scale_ctm, &scale_ctm);
-        code = gs_matrix_multiply(&scale_mat, &scale_ctm, &scale_mat);  /* scale_mat ==  CTM - resolution scaling - FontMatrix scaling */
+        if ((code = I->get_fontmatrix(I, &scale_ctm)) < 0)
+            return code;
+
+        if ((code = gs_matrix_invert((const gs_matrix *)&scale_ctm, &scale_ctm)) < 0)
+            return code;
+
+        if ((code = gs_matrix_multiply(&scale_mat, &scale_ctm, &scale_mat)) < 0)  /* scale_mat ==  CTM - resolution scaling - FontMatrix scaling */
+            return code;
 
         font_scale.matrix[0] =
             (fracint) (scale_mat.xx * FontMatrix_div * scale + 0.5);
@@ -1400,6 +1407,9 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
             int l = I->ff.get_glyphdirectory_data(&(I->ff), cr.char_codes[0],
                                                   &data_ptr);
 
+            /* We do not need to apply the unitsPerEm scale here because
+             * these values are read directly from the glyph data.
+             */
             if (MetricsCount == 2 && l >= 4) {
                 if (!bVertical0) {
                     cr.sb_x = GET_S16_MSB(data_ptr + 2) * scale;
@@ -1416,6 +1426,15 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
             }
         }
     }
+    /* Metrics in GS are scaled to a 1.0x1.0 square, as that's what Postscript
+     * fonts expect. But for Truetype we need the "native" units,
+     */
+    em_scale_x = 1.0;
+    if (pfont->FontType == ft_TrueType) {
+        gs_font_type42 *pfont42 = (gs_font_type42 *) pfont;
+        em_scale_x = pfont42->data.unitsPerEm;
+    }
+
     if (cr.metrics_type != gs_fapi_metrics_replace && bVertical) {
         double pwv[4];
 
@@ -1426,9 +1445,9 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
             return code;
         if (code == 0 /* metricsNone */ ) {
             if (bCID && (!bIsType1GlyphData && font_file_path)) {
-                cr.sb_x = fapi_round(sbw[2] / 2 * scale);
-                cr.sb_y = fapi_round(pbfont->FontBBox.q.y * scale);
-                cr.aw_y = fapi_round(-pbfont->FontBBox.q.x * scale);    /* Sic ! */
+                cr.sb_x = (fracint)(fapi_round( (sbw[2] / 2)         * scale) * em_scale_x);
+                cr.sb_y = (fracint)(fapi_round( pbfont->FontBBox.q.y * scale) * em_scale_x);
+                cr.aw_y = (fracint)(fapi_round(-pbfont->FontBBox.q.x * scale) * em_scale_x);    /* Sic ! */
                 cr.metrics_scale = 1;
                 cr.metrics_type = gs_fapi_metrics_replace;
                 sbw[0] = sbw[2] / 2;
@@ -1442,10 +1461,10 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
             }
         }
         else {
-            cr.sb_x = fapi_round(pwv[2] * scale);
-            cr.sb_y = fapi_round(pwv[3] * scale);
-            cr.aw_x = fapi_round(pwv[0] * scale);
-            cr.aw_y = fapi_round(pwv[1] * scale);
+            cr.sb_x = (fracint)(fapi_round(pwv[2] * scale) * em_scale_x);
+            cr.sb_y = (fracint)(fapi_round(pwv[3] * scale) * em_scale_x);
+            cr.aw_x = (fracint)(fapi_round(pwv[0] * scale) * em_scale_x);
+            cr.aw_y = (fracint)(fapi_round(pwv[1] * scale) * em_scale_x);
             cr.metrics_scale = (bIsType1GlyphData ? 1000 : 1);
             cr.metrics_type = (code == 2 /* metricsSideBearingAndWidth */ ? gs_fapi_metrics_replace
                                : gs_fapi_metrics_replace_width);
@@ -1475,10 +1494,10 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
             }
         }
         else {
-            cr.sb_x = fapi_round(sbw[0] * scale);
-            cr.sb_y = fapi_round(sbw[1] * scale);
-            cr.aw_x = fapi_round(sbw[2] * scale);
-            cr.aw_y = fapi_round(sbw[3] * scale);
+            cr.sb_x = fapi_round(sbw[0] * scale * em_scale_x);
+            cr.sb_y = fapi_round(sbw[1] * scale * em_scale_x);
+            cr.aw_x = fapi_round(sbw[2] * scale * em_scale_x);
+            cr.aw_y = fapi_round(sbw[3] * scale * em_scale_x);
             cr.metrics_scale = (bIsType1GlyphData ? 1000 : 1);
             cr.metrics_type = (code == 2 /* metricsSideBearingAndWidth */ ? gs_fapi_metrics_replace
                                : gs_fapi_metrics_replace_width);
@@ -1489,18 +1508,8 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
     /* Take metrics from font : */
     if (I->ff.metrics_only) {
         code = I->get_char_outline_metrics(I, &I->ff, &cr, &metrics);
-        /* A VMerror could be a real out of memory, or the glyph being too big for a bitmap
-         * so it's worth retrying as an outline glyph
-         */
-        if (code == gs_error_VMerror && I->use_outline == false) {
-            I->max_bitmap = 0;
-            I->use_outline = true;
-            goto retry_oversampling;
-        }
-
     }
     else if (I->use_outline) {
-
         code = I->get_char_outline_metrics(I, &I->ff, &cr, &metrics);
     }
     else {
@@ -1519,14 +1528,7 @@ gs_fapi_do_char(gs_font *pfont, gs_state *pgs, gs_text_enum_t *penum, char *font
                 I->release_char_data(I);
                 goto retry_oversampling;
             }
-            if ((code =
-                 gs_fapi_renderer_retcode(mem, I,
-                                          I->get_char_outline_metrics(I,
-                                                                      &I->ff,
-                                                                      &cr,
-                                                                      &metrics)))
-                < 0)
-                return code;
+            code = I->get_char_outline_metrics(I, &I->ff, &cr, &metrics);
         }
     }
 
@@ -1742,6 +1744,9 @@ gs_fapi_passfont(gs_font *pfont, int subfont, char *font_file_path,
     
     list = gs_fapi_get_server_list(mem);
     
+    if (!list) /* Should never happen */
+      return_error(gs_error_unregistered);
+
     (*fapi_id) = NULL;
 
     pbfont = (gs_font_base *) pfont;
@@ -1899,13 +1904,10 @@ gs_fapi_find_server(gs_memory_t *mem, const char *name, gs_fapi_server **server,
                                     &server_param, &server_param_size);
         }
 
-        if ((code =
-             gs_fapi_renderer_retcode(mem, (*servs),
-                                      (*servs)->ensure_open((*servs),
-                                                            server_param,
-                                                            server_param_size)))
-            < 0) {
-        }
+        code = gs_fapi_renderer_retcode(mem, (*servs),
+                                 (*servs)->ensure_open((*servs),
+                                                       server_param,
+                                                       server_param_size));
 
         if (free_params) {
             gs_free_object(mem->non_gc_memory, server_param,

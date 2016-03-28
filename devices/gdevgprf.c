@@ -17,6 +17,7 @@
 /* gprf device, based upon the gdevpsd.c code. */
 
 #include "math_.h"
+#include "zlib.h"
 #include "gdevprn.h"
 #include "gsparam.h"
 #include "gscrd.h"
@@ -34,7 +35,6 @@
 #include "gdevppla.h"
 #include "gxdownscale.h"
 #include "gdevdevnprn.h"
-#include "zlib.h"
 
 #ifndef MAX_CHAN
 #   define MAX_CHAN 15
@@ -57,7 +57,6 @@ static dev_proc_close_device(gprf_prn_close);
 static dev_proc_get_params(gprf_get_params);
 static dev_proc_put_params(gprf_put_params);
 static dev_proc_print_page(gprf_print_page);
-static dev_proc_get_color_mapping_procs(get_gprfrgb_color_mapping_procs);
 static dev_proc_get_color_mapping_procs(get_gprf_color_mapping_procs);
 static dev_proc_get_color_comp_index(gprf_get_color_comp_index);
 
@@ -66,7 +65,7 @@ static dev_proc_get_color_comp_index(gprf_get_color_comp_index);
  */
 typedef struct gprf_device_s {
     gx_devn_prn_device_common;
-    long downscale_factor;
+    gx_downscaler_params downscale;
     int max_spots;
     bool lock_colorants;
     gsicc_link_t *icclink;
@@ -78,6 +77,7 @@ static
 ENUM_PTRS_WITH(gprf_device_enum_ptrs, gprf_device *pdev)
 {
     ENUM_PREFIX(st_gx_devn_prn_device, 0);
+    (void)pdev; /* Stop unused var warning */
     return 0;
 }
 ENUM_PTRS_END
@@ -85,6 +85,7 @@ ENUM_PTRS_END
 static RELOC_PTRS_WITH(gprf_device_reloc_ptrs, gprf_device *pdev)
 {
     RELOC_PREFIX(st_gx_devn_prn_device);
+    (void)pdev; /* Stop unused var warning */
 }
 RELOC_PTRS_END
 
@@ -213,7 +214,7 @@ const gprf_device gs_gprf_device =
     },
     { true },			/* equivalent CMYK colors for spot colors */
     /* gprf device specific parameters */
-    1,                          /* downscale_factor */
+    GX_DOWNSCALER_PARAMS_DEFAULTS,
     GS_SOFT_MAX_SPOTS,          /* max_spots */
     false,                      /* colorants not locked */
     0,                          /* ICC link */
@@ -441,7 +442,7 @@ gprf_get_params(gx_device * pdev, gs_param_list * plist)
     if (code < 0)
         return code;
 
-    code = param_write_long(plist, "DownScaleFactor", &xdev->downscale_factor);
+    code = gx_downscaler_write_params(plist, &xdev->downscale, 0);
     if (code < 0)
         return code;
     code = param_write_int(plist, "MaxSpots", &xdev->max_spots);
@@ -451,14 +452,6 @@ gprf_get_params(gx_device * pdev, gs_param_list * plist)
     return code;
 }
 
-/* Compare a C string and a gs_param_string. */
-static bool
-param_string_eq(const gs_param_string *pcs, const char *str)
-{
-    return (strlen(str) == pcs->size &&
-            !strncmp(str, (const char *)pcs->data, pcs->size));
-}
-
 /* Set parameters.  We allow setting the number of bits per component. */
 static int
 gprf_put_params(gx_device * pdev, gs_param_list * plist)
@@ -466,22 +459,11 @@ gprf_put_params(gx_device * pdev, gs_param_list * plist)
     gprf_device * const pdevn = (gprf_device *) pdev;
     int code = 0;
 
-    gs_param_string pcm;
     gx_device_color_info save_info = pdevn->color_info;
 
-    switch (code = param_read_long(plist,
-                                   "DownScaleFactor",
-                                   &pdevn->downscale_factor)) {
-        case 0:
-            if (pdevn->downscale_factor <= 0)
-                pdevn->downscale_factor = 1;
-            break;
-        case 1:
-            break;
-        default:
-            param_signal_error(plist, "DownScaleFactor", code);
-            return code;
-    }
+    code = gx_downscaler_read_params(plist, &pdevn->downscale, 0);
+    if (code < 0)
+        return code;
 
     switch (code = param_read_bool(plist, "LockColorants", &(pdevn->lock_colorants))) {
         case 0:
@@ -583,7 +565,7 @@ typedef struct {
     byte *deflate_block;
 } gprf_write_ctx;
 
-int
+static int
 gprf_setup(gprf_write_ctx *xc, gx_device_printer *pdev, FILE *file, int w, int h,
            gsicc_link_t *icclink)
 {
@@ -654,7 +636,7 @@ gprf_setup(gprf_write_ctx *xc, gx_device_printer *pdev, FILE *file, int w, int h
 }
 
 /* All multi-byte quantities are stored LSB-first! */
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
 #  define assign_u16(a,v) a = ((v) >> 8) + ((v) << 8)
 #  define assign_u32(a,v) a = (((v) >> 24) & 0xff) + (((v) >> 8) & 0xff00) + (((v) & 0xff00) << 8) + (((v) & 0xff) << 24)
 #else
@@ -662,7 +644,7 @@ gprf_setup(gprf_write_ctx *xc, gx_device_printer *pdev, FILE *file, int w, int h
 #  define assign_u32(a,v) a = (v)
 #endif
 
-int
+static int
 gprf_write(gprf_write_ctx *xc, const byte *buf, int size) {
     int code;
 
@@ -672,13 +654,13 @@ gprf_write(gprf_write_ctx *xc, const byte *buf, int size) {
     return 0;
 }
 
-int
+static int
 gprf_write_8(gprf_write_ctx *xc, byte v)
 {
     return gprf_write(xc, (byte *)&v, 1);
 }
 
-int
+static int
 gprf_write_16(gprf_write_ctx *xc, bits16 v)
 {
     bits16 buf;
@@ -687,7 +669,7 @@ gprf_write_16(gprf_write_ctx *xc, bits16 v)
     return gprf_write(xc, (byte *)&buf, 2);
 }
 
-int
+static int
 gprf_write_32(gprf_write_ctx *xc, bits32 v)
 {
     bits32 buf;
@@ -696,21 +678,7 @@ gprf_write_32(gprf_write_ctx *xc, bits32 v)
     return gprf_write(xc, (byte *)&buf, 4);
 }
 
-static fixed_colorant_name
-get_sep_name(gx_devn_prn_device *pdev, int n)
-{
-    fixed_colorant_name p = NULL;
-    int i;
-
-    for (i = 0; i <= n; i++) {
-        p = pdev->devn_params.std_colorant_names[i];
-        if (p == NULL)
-            break;
-    }
-    return p;
-}
-
-void
+static void
 gprf_write_header(gprf_write_ctx *xc)
 {
     int i;
@@ -776,11 +744,10 @@ gprf_write_header(gprf_write_ctx *xc)
            project. At this point, everything has an alpha of 1.0 */
         rgba[3] = 255;
         if (xc->icclink != NULL) {
-            xc->icclink->procs.map_color(dev, xc->icclink, &(cmyk[0]), &(rgba[0]), 1);
+	  xc->icclink->procs.map_color((gx_device *)dev, xc->icclink, &(cmyk[0]), &(rgba[0]), 1);
         } else {
             /* Something was wrong with the icclink. Use the canned routines. */
             frac rgb_frac[3], cmyk_frac[4];
-            int r, g, b;
             int index;
             int temp;
 
@@ -992,23 +959,22 @@ get_rgb_planar_line(gprf_write_ctx *xc, byte *c, byte *m, byte *y, byte *k,
     gprf_device *gprf_dev = (gprf_device *)xc->dev;
     frac rgb_frac[3];
     int temp;
-    int i;
     byte *rp = red_in;
     byte *gp = green_in;
     byte *bp = blue_in;
 
     for (x_pos = 0; x_pos < width; x_pos++) {
 
-        c_val = ((long)(*c++)* frac_1 / 255.0);
+        c_val = (int)((long)(*c++)* frac_1 / 255.0);
         c_val = (c_val < 0 ? 0 : (c_val > frac_1 ? frac_1 : c_val));
 
-        m_val = ((long)(*m++)* frac_1 / 255.0);
+        m_val = (int)((long)(*m++)* frac_1 / 255.0);
         m_val = (m_val < 0 ? 0 : (m_val > frac_1 ? frac_1 : m_val));
 
-        y_val = ((long)(*y++)* frac_1 / 255.0);
+        y_val = (int)((long)(*y++)* frac_1 / 255.0);
         y_val = (y_val < 0 ? 0 : (y_val > frac_1 ? frac_1 : y_val));
 
-        k_val = ((long)(*k++)* frac_1 / 255.0);
+        k_val = (int)((long)(*k++)* frac_1 / 255.0);
         k_val = (k_val < 0 ? 0 : (k_val > frac_1 ? frac_1 : k_val));
 
         color_cmyk_to_rgb(c_val, m_val, y_val, k_val, NULL, rgb_frac,
@@ -1123,7 +1089,7 @@ gprf_write_image_data(gprf_write_ctx *xc)
     }
 
     code = gx_downscaler_init_planar(&ds, (gx_device *)pdev, &params, num_comp,
-                                     gprf_dev->downscale_factor, 0, 8, 8);
+                                     gprf_dev->downscale.downscale_factor, 0, 8, 8);
     if (code < 0)
         goto cleanup;
 
@@ -1172,8 +1138,8 @@ gprf_write_image_data(gprf_write_ctx *xc)
                         raster_row, raster_row, 1, pdev->width);
                     gsicc_init_buffer(&output_buffer_desc, 3, 1, false, false, true,
                         raster_plane, raster_row, 1, pdev->width);
-                    xc->icclink->procs.map_buffer(gprf_dev, xc->icclink,
-                        &input_buffer_desc, &output_buffer_desc,
+                    xc->icclink->procs.map_buffer((gx_device *)gprf_dev,
+                        xc->icclink, &input_buffer_desc, &output_buffer_desc,
                         cmyk, rgb[0] + y * raster_row);
                 }
             } else {
@@ -1192,8 +1158,8 @@ gprf_write_image_data(gprf_write_ctx *xc)
                         false, true, raster_plane, raster_row, 1, pdev->width);
                     gsicc_init_buffer(&output_buffer_desc, 3, 1, false, false, true,
                         raster_plane, raster_row, 1, pdev->width);
-                    xc->icclink->procs.map_buffer(gprf_dev, xc->icclink,
-                        &input_buffer_desc, &output_buffer_desc,
+                    xc->icclink->procs.map_buffer((gx_device *)gprf_dev,
+                        xc->icclink, &input_buffer_desc, &output_buffer_desc,
                         planes[0] + y * raster_row, rgb[0] + y * raster_row);
                 }
             }
@@ -1243,8 +1209,8 @@ gprf_print_page(gx_device_printer *pdev, FILE *file)
     gprf_device *gprf_dev = (gprf_device *)pdev;
 
     gprf_setup(&xc, pdev, file,
-              gx_downscaler_scale(pdev->width, gprf_dev->downscale_factor),
-              gx_downscaler_scale(pdev->height, gprf_dev->downscale_factor),
+              gx_downscaler_scale(pdev->width, gprf_dev->downscale.downscale_factor),
+              gx_downscaler_scale(pdev->height, gprf_dev->downscale.downscale_factor),
               gprf_dev->icclink);
     gprf_write_header(&xc);
     gprf_write_image_data(&xc);

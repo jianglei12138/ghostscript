@@ -36,7 +36,7 @@
 /* Define the size of the tile buffer allocated on the stack. */
 #define tile_longs_LARGE 256
 #define tile_longs_SMALL 64
-#if arch_small_memory
+#if ARCH_SMALL_MEMORY
 #  define tile_longs_allocated tile_longs_SMALL
 #  define tile_longs tile_longs_SMALL
 #else
@@ -266,7 +266,7 @@ gx_dc_ht_colored_write(
     /* see if enough space is available */
     if (req_size > *psize) {
         *psize = req_size;
-        return gs_error_rangecheck;
+        return_error(gs_error_rangecheck);
     }
 
     /* write out the flag byte */

@@ -924,6 +924,8 @@ typedef	struct {
 /****************************************************************************/
 /*							Prototypes										*/
 /****************************************************************************/
+static dev_proc_encode_color(photoex_encode_color);
+static dev_proc_decode_color(photoex_decode_color);
 
 static int		photoex_open( gx_device *pdev );
 static	int		photoex_print_page( PDEV *dev, FILE *prn_stream );
@@ -1005,8 +1007,7 @@ static	const HFUNCS	htable[ MAXHTONE ] = {
 *	The definition is based on GS macros, the only real stuff that we
 *	define here are the photoex_ functions.
 */
-
-static	const gx_device_procs photoex_device_procs = prn_color_params_procs(
+static	const gx_device_procs photoex_device_procs = prn_color_params_procs_enc_dec(
 
         photoex_open,					/* Opens the device						*/
 /* Since the print_page doesn't alter the device, this device can print in the background */
@@ -1015,7 +1016,9 @@ static	const gx_device_procs photoex_device_procs = prn_color_params_procs(
         photoex_map_rgb_color,			/* Maps an RGB pixel to device colour	*/
         photoex_map_color_rgb,			/* Maps device colour back to RGB		*/
         photoex_get_params,				/* Gets device parameters				*/
-        photoex_put_params				/* Puts device parameters				*/
+        photoex_put_params,				/* Puts device parameters				*/
+        photoex_encode_color,
+        photoex_decode_color
 );
 
 /*
@@ -1339,11 +1342,9 @@ static const unsigned char	xtrans[ 256 ] = {
 
 static int		photoex_open( DEV *pdev )
 {
-double	height;
 double	width;
 float	margins[ 4 ];						/* L, B, R, T					*/
 
-        height = pdev->height / pdev->y_pixels_per_inch;
         width  = pdev->width  / pdev->x_pixels_per_inch;
 
         margins[ 0 ] = 0.12;
@@ -1374,10 +1375,7 @@ static	CINX	photoex_map_rgb_color( DEV *dev, const CVAL prgb[] )
 CVAL            r = prgb[0], g = prgb[1], b = prgb[2];
 int		c, y, m, k;
 int		a, s, f;
-EDEV	*edev;
 int		i;
-
-        edev = (EDEV *) dev;
 
         /* White and black are treated on their own */
 
@@ -1472,6 +1470,24 @@ CVAL	r, g, b;
         prgb[ 2 ] = b;
 
         return( 0 );
+}
+
+/*
+* Encode a list of colorant values into a gx_color_index_value.
+*/
+static gx_color_index
+photoex_encode_color(gx_device *dev, const gx_color_value colors[])
+{
+    return photoex_map_rgb_color(dev, colors);
+}
+
+/*
+* Decode a gx_color_index value back to a list of colorant values.
+*/
+static int
+photoex_decode_color(gx_device * dev, gx_color_index color, gx_color_value * out)
+{
+    return photoex_map_color_rgb(dev, color, out);
 }
 
 /*
@@ -2760,7 +2776,6 @@ static	void	HalftoneLine( RENDER *render, int line, byte *data )
 {
 void		(*htone)( HTONE *, int );
 EDEV		*dev;
-int			offs;
 HTONE		hdata;
 short		*errs[ MAX_ED_LINES ];
 int			i;
@@ -2769,7 +2784,6 @@ int			i;
 
         dev   = render->dev;
         htone = htable[ render->dev->halftoner ].htone;
-        offs  = render->mono ? 0 : OFFS_K;
 
         if ( dev->mono ) {
 

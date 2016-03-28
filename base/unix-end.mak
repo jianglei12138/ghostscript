@@ -14,9 +14,9 @@
 #
 # Partial makefile common to all Unix and Desqview/X configurations.
 # This is the next-to-last part of the makefile for these configurations.
-
+UNIX_END_MAK=$(GLSRC)unix-end.mak $(TOP_MAKEFILES)
 # Define the rule for building standard configurations.
-directories:
+directories: $(UNIX_END_MAK)
 	@if test "$(BINDIR)"    != "" -a ! -d $(BINDIR);        then mkdir $(BINDIR);        fi
 	@if test "$(GLGENDIR)"  != "" -a ! -d $(GLGENDIR);      then mkdir $(GLGENDIR);      fi
 	@if test "$(GLOBJDIR)"  != "" -a ! -d $(GLOBJDIR);      then mkdir $(GLOBJDIR);      fi
@@ -28,22 +28,22 @@ directories:
 	@if test "$(PSOBJDIR)"  != "" -a ! -d $(PSOBJDIR);      then mkdir $(PSOBJDIR);      fi
 
 
-gs: .gssubtarget
+gs: .gssubtarget $(UNIX_END_MAK)
 	$(NO_OP)
 
-gpcl6: .pcl6subtarget
+gpcl6: .pcl6subtarget $(UNIX_END_MAK)
 	$(NO_OP)
 
 gpcl6clean: cleansub
 	$(NO_OP)
 
-gxps: .xpssubtarget
+gxps: .xpssubtarget $(UNIX_END_MAK)
 	$(NO_OP)
 
 gxpsclean: cleansub
 	$(NO_OP)
 
-gpdl: .gpdlsubtarget
+gpdl: .gpdlsubtarget $(UNIX_END_MAK)
 	$(NO_OP)
 
 gpdlclean: .cleansub
@@ -148,6 +148,30 @@ mementoclean:
 
 gpcl6_gxps_clean: gpcl6clean gxpsclean
 	$(NO_OP)
+
+# Define rules for building address sanitizer configurations.
+# NOTE: Currently these targets rely on ignoring errors. This
+# will be fixed in future.
+SANITIZEDEFS=GENOPT='-DDEBUG' \
+ CFLAGS='$(CFLAGS_DEBUG) $(CFLAGS_SANITIZE) $(GCFLAGS) $(XCFLAGS)'\
+ LDFLAGS='$(LDFLAGS) $(LDFLAGS_SANITIZE)' \
+ BUILDDIRPREFIX=$(SANITIZEDIRPREFIX) \
+ -i
+
+sanitize:
+	$(MAKE) $(SUB_MAKE_OPTION) $(SANITIZEDEFS) default
+
+gssanitize:
+	$(MAKE) $(SUB_MAKE_OPTION) $(SANITIZEDEFS) .gssubtarget
+
+gpcl6sanitize:
+	$(MAKE) $(SUB_MAKE_OPTION) $(SANITIZEDEFS) .pcl6subtarget
+
+gxpssanitize:
+	$(MAKE) $(SUB_MAKE_OPTION) $(SANITIZEDEFS) .xpssubtarget
+
+sanitizeclean:
+	$(MAKE) $(SUB_MAKE_OPTION) $(SANITIZEDEFS) cleansub
 
 # Emacs tags maintenance.
 

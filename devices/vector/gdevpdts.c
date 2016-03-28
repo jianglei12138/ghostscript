@@ -294,11 +294,22 @@ pdf_set_text_matrix(gx_device_pdf * pdev)
          * matrix adjustments.
          */
         double sx = 72.0 / pdev->HWResolution[0],
-            sy = 72.0 / pdev->HWResolution[1];
+            sy = 72.0 / pdev->HWResolution[1], ax = sx, bx = sx, ay = sy, by = sy;
 
+        /* We have a precision limit on decimal places with %g, make sure
+         * we don't end up with values which will be truncated to 0
+         */
+        if (pts->in.matrix.xx != 0 && fabs(pts->in.matrix.xx) * ax < 0.00000001)
+            ax = ceil(0.00000001 / pts->in.matrix.xx);
+        if (pts->in.matrix.xy != 0 && fabs(pts->in.matrix.xy) * ay < 0.00000001)
+            ay = ceil(0.00000001 / pts->in.matrix.xy);
+        if (pts->in.matrix.yx != 0 && fabs(pts->in.matrix.yx) * bx < 0.00000001)
+            bx = ceil(0.00000001 / pts->in.matrix.yx);
+        if (pts->in.matrix.yy != 0 && fabs(pts->in.matrix.yy) * by < 0.00000001)
+            by = ceil(0.00000001 / pts->in.matrix.yy);
         pprintg6(s, "%g %g %g %g %g %g Tm\n",
-                 pts->in.matrix.xx * sx, pts->in.matrix.xy * sy,
-                 pts->in.matrix.yx * sx, pts->in.matrix.yy * sy,
+                 pts->in.matrix.xx * ax, pts->in.matrix.xy * ay,
+                 pts->in.matrix.yx * bx, pts->in.matrix.yy * by,
                  pts->start.x * sx, pts->start.y * sy);
     }
     pts->line_start.x = pts->start.x;

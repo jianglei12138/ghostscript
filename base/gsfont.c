@@ -219,7 +219,7 @@ gs_font_dir_alloc2(gs_memory_t * struct_mem, gs_memory_t * bits_mem)
 {
     gs_font_dir *pdir = 0;
 
-#if !arch_small_memory
+#if !ARCH_SMALL_MEMORY
 #  ifdef DEBUG
     if (!gs_debug_c('.'))
 #  endif
@@ -859,6 +859,7 @@ gs_default_font_info(gs_font *font, const gs_point *pscale, int members,
              ) {
             gs_glyph_info_t glyph_info;
 
+            memset(&glyph_info, 0x00, sizeof(gs_glyph_info_t));
             code = font->procs.glyph_info(font, glyph, pmat,
                                           (GLYPH_INFO_WIDTH0 << wmode),
                                           &glyph_info);

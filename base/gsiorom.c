@@ -224,7 +224,7 @@ s_block_read_process(stream_state * st, stream_cursor_read * ignore_pr,
         }
         /* Decompress the data into this block */
         code = uncompress (dest, &buflen, block_data, block_length);
-        if (count != buflen)
+        if (code != Z_OK || count != buflen)
             return ERRC;
         if (need_copy) {
             memcpy(pw->ptr+1, dest, max_count);
@@ -250,7 +250,7 @@ romfs_init(gx_io_device *iodev, gs_memory_t *mem)
     romfs_state *state = gs_alloc_struct(mem, romfs_state, &st_romfs_state,
                                          "romfs_init(state)");
     if (!state)
-        return gs_error_VMerror;
+        return_error(gs_error_VMerror);
     iodev->state = state;
     return 0;
 }

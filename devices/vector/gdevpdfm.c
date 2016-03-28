@@ -685,9 +685,43 @@ pdfmark_put_ao_pairs(gx_device_pdf * pdev, cos_dict_t *pcd,
              (pdf_key_eq(Action + 1, "/GoToR") && File) ||
              pdf_key_eq(Action + 1, "/Article"))
             ) {
-            cos_dict_t *adict = cos_dict_alloc(pdev, "action dict");
+            cos_dict_t *adict;
             cos_value_t avalue;
 
+            if (pdf_key_eq(Action + 1, "/Launch") && pdev->PDFA != 0) {
+                switch (pdev->PDFACompatibilityPolicy) {
+                    /* Default behaviour matches Adobe Acrobat, warn and continue,
+                     * output file will not be PDF/A compliant
+                     */
+                    case 0:
+                        emprintf(pdev->memory,
+                                 "Launch annotations not permitted in PDF/A, reverting to normal PDF output\n");
+                        pdev->AbortPDFAX = true;
+                        pdev->PDFA = 0;
+                        break;
+                        /* Since the annotation would break PDF/A compatibility, do not
+                         * include it, but warn the user that it has been dropped.
+                         */
+                    case 1:
+                        emprintf(pdev->memory,
+                                 "Launch annotations not permitted in PDF/A,  cannot drop annotation, aborting conversion\n");
+                        return_error (gs_error_typecheck);
+                        break;
+                    case 2:
+                        emprintf(pdev->memory,
+                                 "Launch annotations not permitted in PDF/A,  aborting conversion\n");
+                        return_error (gs_error_typecheck);
+                        break;
+                    default:
+                        emprintf(pdev->memory,
+                                 "Launch annotations not permitted in PDF/A, unrecognised PDFACompatibilityLevel,\nreverting to normal PDF output\n");
+                        pdev->AbortPDFAX = true;
+                        pdev->PDFA = 0;
+                        break;
+                }
+            }
+
+            adict = cos_dict_alloc(pdev, "action dict");
             if (adict == 0)
                 return_error(gs_error_VMerror);
             if (!for_outline) {
@@ -744,6 +778,42 @@ pdfmark_put_ao_pairs(gx_device_pdf * pdev, cos_dict_t *pcd,
                     (code = pdf_scan_token_composite(&scan, end, &value.data)) != 1)
                     break;
                 value.size = scan - value.data;
+                if (pdev->PDFA != 0 && (pdf_key_eq(&key, "/Subtype") || pdf_key_eq(&key, "/S"))) {
+                    if (pdf_key_eq(&value, "/Launch")) {
+                        switch (pdev->PDFACompatibilityPolicy) {
+                            /* Default behaviour matches Adobe Acrobat, warn and continue,
+                             * output file will not be PDF/A compliant
+                             */
+                            case 0:
+                                emprintf(pdev->memory,
+                                         "Launch annotations not permitted in PDF/A, reverting to normal PDF output\n");
+                                pdev->AbortPDFAX = true;
+                                pdev->PDFA = 0;
+                                break;
+                                /* Since the annotation would break PDF/A compatibility, do not
+                                 * include it, but warn the user that it has been dropped.
+                                 */
+                            case 1:
+                                emprintf(pdev->memory,
+                                         "Launch annotations not permitted in PDF/A,  cannot drop annotation, aborting conversion\n");
+                                gs_free_object(pdev->memory->stable_memory, adict,  "action dict");
+                                return_error (gs_error_typecheck);
+                                break;
+                            case 2:
+                                emprintf(pdev->memory,
+                                         "Launch annotations not permitted in PDF/A,  aborting conversion\n");
+                                gs_free_object(pdev->memory->stable_memory, adict,  "action dict");
+                                return_error (gs_error_typecheck);
+                                break;
+                            default:
+                                emprintf(pdev->memory,
+                                         "Launch annotations not permitted in PDF/A, unrecognised PDFACompatibilityLevel,\nreverting to normal PDF output\n");
+                                pdev->AbortPDFAX = true;
+                                pdev->PDFA = 0;
+                                break;
+                        }
+                    }
+                }
                 if (pdf_key_eq(&key, "/Dest") || pdf_key_eq(&key, "/D")) {
                     param_string_from_string(key, "/D");
                     if (value.data[0] == '(') {
@@ -897,7 +967,7 @@ pdfmark_annot(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
                 case 2:
                     emprintf(pdev->memory,
                              "Annotation set to non-printing,\n not permitted in PDF/A, aborting conversion\n");
-                    return gs_error_invalidfont;
+                    return_error(gs_error_invalidfont);
                     break;
                 default:
                     emprintf(pdev->memory,
@@ -1041,7 +1111,7 @@ pdfmark_annot(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
                         case 2:
                             emprintf(pdev->memory,
                                      "Annotation (not TrapNet or PrinterMark) on page,\n not permitted in PDF/X, aborting conversion\n");
-                            return gs_error_invalidfont;
+                            return_error(gs_error_invalidfont);
                             break;
                         default:
                             emprintf(pdev->memory,
@@ -1075,7 +1145,7 @@ pdfmark_annot(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
                     case 2:
                         emprintf(pdev->memory,
                                  "Annotation (not TrapNet or PrinterMark) potentially on page (no /Rect in dict),\n not permitted in PDF/X, aborting conversion\n");
-                        return gs_error_invalidfont;
+                        return_error(gs_error_invalidfont);
                         break;
                     default:
                         emprintf(pdev->memory,
@@ -1447,6 +1517,29 @@ pdfmark_EMBED(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
 
     if (pdev->CompatibilityLevel < 1.4)
         return_error(gs_error_undefined);
+    if (pdev->PDFA > 0 && pdev->PDFA < 2) {
+        switch(pdev->PDFACompatibilityPolicy) {
+            default:
+            case 0:
+                emprintf(pdev->memory,
+                "The PDF/A-1 specifcation prohibits the embedding of files, reverting to normal PDF output.\n");
+                pdev->AbortPDFAX = true;
+                pdev->PDFX = 0;
+                return 0;
+            case 1:
+                emprintf(pdev->memory,
+                "The PDF/A-1 specifcation prohibits the embedding of files, pdfamrk operatoin ignored.\n");
+                break;
+            case 2:
+                return_error(gs_error_undefined);
+        }
+    }
+    if (pdev->PDFA > 0 && pdev->PDFA < 3) {
+        emprintf(pdev->memory,
+        "The PDF/A-2 specifcation only permits the embedding of PDF/A-1 or PDF/A-2 files.\n");
+        emprintf(pdev->memory,
+        "The pdfwrite device has not validated this embedded file, output may not conform to PDF/A-2.\n");
+    }
     if (!pdfmark_find_key("/FS", pairs, count, &key))
         return_error(gs_error_rangecheck);
     if (!pdfmark_find_key("/Name", pairs, count, &key))
@@ -2499,6 +2592,111 @@ pdfmark_StRetrieve(gx_device_pdf *pdev, gs_param_string *pairs, uint count,
     return 0;			/****** NOT IMPLEMENTED YET ******/
 }
 
+static int
+pdfmark_Metadata(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
+             const gs_matrix * pctm, const gs_param_string * objname)
+{
+    int i;
+    gs_param_string key;
+    char data[10] = "/Metadata";
+
+    if (pdev->CompatibilityLevel < 1.4) {
+        dmprintf(pdev->pdf_memory, "Cannot add Metadata to PDF files with version earlier than 1.4.\n");
+        return 0;
+    }
+    if (pdev->PDFA != 0)
+        dmprintf(pdev->pdf_memory, "Warning: PDF/A output requires specific metadata, this pdfmark has overridden that,\n         output conformance cannot be guaranteed\n");
+    if (pdev->PDFX != 0)
+        dmprintf(pdev->pdf_memory, "Warning: PDF/X output requires specific metadata, this pdfmark has overridden that,\n         output conformance cannot be guaranteed\n");
+
+    if(pdev->ExtensionMetadata) {
+        dmprintf(pdev->pdf_memory, "Extension metadata exists when /Metadata pdfmark executed, discarding extension metadata.\n");
+        gs_free_object(pdev->pdf_memory->stable_memory, pdev->ExtensionMetadata, "Extension metadata discarded on /Metadata pdfmark");
+    }
+
+    if (!pdev->Catalog) {
+        gs_param_string nstr;
+
+        param_string_from_string(nstr, "{Catalog}");
+        pdf_create_named_dict(pdev, &nstr, &pdev->Catalog, 0L);
+    }
+
+    key.data = (const byte *)&data;
+    key.size = 9;
+
+    for (i = 0; i < count; i += 2) {
+        if (pdf_key_eq(&pairs[i], "{Catalog}")) {
+            return cos_dict_put_string(pdev->Catalog, key.data, key.size,
+                               pairs[i+1].data, pairs[i+1].size);
+        }
+    }
+    return 0;
+}
+
+static int
+pdfmark_Ext_Metadata(gx_device_pdf * pdev, gs_param_string * pairs, uint count,
+             const gs_matrix * pctm, const gs_param_string * objname)
+{
+    int i, j=0;
+
+    if (pdev->CompatibilityLevel < 1.4) {
+        dmprintf(pdev->pdf_memory, "Cannot add Metadata to PDF files with version earlier than 1.4.\n");
+        return 0;
+    }
+
+    if (cos_dict_find_c_key(pdev->Catalog, "/Metadata")) {
+        dmprintf(pdev->pdf_memory, "Cannot add extension to Metadata specified with the /Metadata pdfmark\n");
+        return 0;
+    }
+
+    if(pdev->ExtensionMetadata) {
+        dmprintf(pdev->pdf_memory, "Extension metadata already defined, discarding old data.\n");
+        gs_free_object(pdev->pdf_memory->stable_memory, pdev->ExtensionMetadata, "Extension metadata");
+    }
+    pdev->ExtensionMetadata = (char *)gs_alloc_bytes(pdev->pdf_memory->stable_memory, pairs[1].size, "Extension metadata");
+    memset(pdev->ExtensionMetadata, 0x00, pairs[1].size);
+    for (i=1;i<pairs[1].size - 2;i++) {
+        if (pairs[1].data[i] == '\\') {
+            switch(pairs[1].data[i+1]) {
+                case '(':
+                case ')':
+                case '\\':
+                    pdev->ExtensionMetadata[j++] = pairs[1].data[i+1];
+                    i++;
+                    break;
+                case 'r':
+                    pdev->ExtensionMetadata[j++] = 0x0D;
+                    i++;
+                    break;
+                case 'n':
+                    pdev->ExtensionMetadata[j++] = 0x0A;
+                    i++;
+                    break;
+                case 't':
+                    pdev->ExtensionMetadata[j++] = 0x09;
+                    i++;
+                    break;
+                case 'b':
+                    pdev->ExtensionMetadata[j++] = 0x08;
+                    i++;
+                    break;
+                case 'f':
+                    pdev->ExtensionMetadata[j++] = 0x0C;
+                    i++;
+                    break;
+                default:
+                    if((pairs[1].data[i+1]) >= 0x30 && (pairs[1].data[i+1]) <= 0x39) {
+                        pdev->ExtensionMetadata[j++] = (pairs[1].data[i+1]) * 64 + (pairs[1].data[i+2]) * 8 + (pairs[1].data[i+3]);
+                        i += 3;
+                    } else
+                        pdev->ExtensionMetadata[j++] = pairs[1].data[i];
+                    break;
+            }
+        } else
+            pdev->ExtensionMetadata[j++] = pairs[1].data[i];
+    }
+    return 0;
+}
 /* ---------------- Dispatch ---------------- */
 
 /*
@@ -2555,6 +2753,9 @@ static const pdfmark_name mark_names[] =
     {"StAttr",       pdfmark_StAttr,       0},
     {"StStore",      pdfmark_StStore,      0},
     {"StRetrieve",   pdfmark_StRetrieve,   0},
+    /* Metadata and extension */
+    {"Metadata",     pdfmark_Metadata,     0},
+    {"Ext_Metadata", pdfmark_Ext_Metadata, 0},
         /* End of list. */
     {0, 0}
 };

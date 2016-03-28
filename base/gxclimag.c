@@ -793,6 +793,8 @@ clist_begin_typed_image(gx_device * dev, const gs_imager_state * pis,
     if (dev_profile == NULL) {
         gsicc_rendering_param_t temp_render_cond;
         code = dev_proc(dev, get_profile)(dev,  &dev_profile);
+        if (code < 0)
+            return code;
         gsicc_extract_profile(dev->graphics_type_tag, dev_profile,
                                               &(gs_output_profile),
                                               &(temp_render_cond));
@@ -811,7 +813,9 @@ clist_begin_typed_image(gx_device * dev, const gs_imager_state * pis,
             if (pie->decode.unpack == NULL) {
                 /* If we cant unpack, then end monitoring now. Treat as has color */
                 dev_profile->pageneutralcolor = false;
-                gsicc_mcm_end_monitor(pis->icc_link_cache, dev);
+                code = gsicc_mcm_end_monitor(pis->icc_link_cache, dev);
+                if (code < 0)
+                    return code;
             } else {
                 /* We need to allocate the buffer for unpacking during monitoring.
                     This is mainly for the 12bit case */
@@ -829,7 +833,9 @@ clist_begin_typed_image(gx_device * dev, const gs_imager_state * pis,
             if (palette_has_color(pim->ColorSpace, pim)) {
                 /* Has color.  We are done monitoring */
                 dev_profile->pageneutralcolor = false;
-                gsicc_mcm_end_monitor(pis->icc_link_cache, dev);
+                code = gsicc_mcm_end_monitor(pis->icc_link_cache, dev);
+                if (code < 0)
+                    return code;
             }
         }
     } else {
@@ -838,8 +844,8 @@ clist_begin_typed_image(gx_device * dev, const gs_imager_state * pis,
     if (gx_device_must_halftone(dev) && pim->BitsPerComponent == 8 && !masked &&
         (dev->color_info.num_components == 1 || is_planar_dev) &&
         dev_profile->prebandthreshold) {
-        int dev_width = dbox.q.x - dbox.p.x;
-        int dev_height = dbox.q.y - dbox.p.y;
+        int dev_width = (int)(ceil(dbox.q.x) - floor(dbox.p.x));
+        int dev_height = (int)(ceil(dbox.q.y) - floor(dbox.p.y));
 
         int src_size = pim->Height *
                        bitmap_raster(pim->Width * pim->BitsPerComponent *
@@ -1204,7 +1210,7 @@ clist_image_plane_data(gx_image_enum_common_t * info,
                                 cmm_dev_profile_t *dev_profile;
                                 code = dev_proc(dev, get_profile)(dev,  &dev_profile);
                                 dev_profile->pageneutralcolor = false;
-                                gsicc_mcm_end_monitor(pie->pis->icc_link_cache, dev);
+                                code |= gsicc_mcm_end_monitor(pie->pis->icc_link_cache, dev);
                                 pie->monitor_color = false;
                             }
                         } else {

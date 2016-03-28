@@ -119,6 +119,7 @@ ENUM_PTRS_WITH(device_pdfwrite_enum_ptrs, gx_device_pdf *pdev)
  ENUM_PTR(40, gx_device_pdf, outline_levels);
  ENUM_PTR(41, gx_device_pdf, EmbeddedFiles);
  ENUM_PTR(42, gx_device_pdf, pdf_font_dir);
+ ENUM_PTR(43, gx_device_pdf, ExtensionMetadata);
 #define e1(i,elt) ENUM_PARAM_STRING_PTR(i + gx_device_pdf_num_ptrs, gx_device_pdf, elt);
 gx_device_pdf_do_param_strings(e1)
 #undef e1
@@ -172,6 +173,7 @@ static RELOC_PTRS_WITH(device_pdfwrite_reloc_ptrs, gx_device_pdf *pdev)
  RELOC_PTR(gx_device_pdf, vgstack);
  RELOC_PTR(gx_device_pdf, EmbeddedFiles);
  RELOC_PTR(gx_device_pdf, pdf_font_dir);
+ RELOC_PTR(gx_device_pdf, ExtensionMetadata);
 #define r1(i,elt) RELOC_PARAM_STRING_PTR(gx_device_pdf,elt);
         gx_device_pdf_do_param_strings(r1)
 #undef r1
@@ -1216,7 +1218,7 @@ pdf_write_page(gx_device_pdf *pdev, int page_num)
                     case 2:
                         emprintf(pdev->memory,
                          "TrimBox does not fit inside BleedBox, not permitted in PDF/X-3, aborting conversion\n");
-                         return gs_error_unknownerror;
+			return_error(gs_error_unknownerror);
                         break;
                     default:
                         emprintf(pdev->memory,
@@ -1281,7 +1283,7 @@ pdf_write_page(gx_device_pdf *pdev, int page_num)
                         case 2:
                             emprintf(pdev->memory,
                              "TrimBox does not fit inside CropBox, not permitted in PDF/X-3, aborting conversion\n");
-                             return gs_error_unknownerror;
+			    return_error(gs_error_unknownerror);
                             break;
                         default:
                             emprintf(pdev->memory,
@@ -1394,7 +1396,7 @@ pdf_output_page(gx_device * dev, int num_copies, int flush)
         emprintf(pdev->memory, "\n\nUse of -dUseCIEColor detected!\nSince the release of version 9.11 of Ghostscript we recommend you do not set\n-dUseCIEColor with the pdfwrite/ps2write device family.\n\n");
     }
     if (pdf_ferror(pdev))
-        gs_note_error(gs_error_ioerror);
+        return_error(gs_error_ioerror);
 
     if ((code = gx_finish_output_page(dev, num_copies, flush)) < 0)
         return code;
@@ -1547,21 +1549,21 @@ rewrite_object(gx_device_pdf *const pdev, pdf_linearisation_t *linear_params, in
         }
     } while (target);
 
-    do {
+    while (Size) {
         if (Size > ScratchSize) {
             code = fread(Scratch, ScratchSize, 1, linear_params->sfile);
             if (code != 1)
-                return gs_error_ioerror;
+	      return_error(gs_error_ioerror);
             fwrite(Scratch, ScratchSize, 1, linear_params->Lin_File.file);
             Size -= 16384;
         } else {
             code = fread(Scratch, Size, 1, linear_params->sfile);
             if (code != 1)
-                return gs_error_ioerror;
+	      return_error(gs_error_ioerror);
             fwrite(Scratch, Size, 1, linear_params->Lin_File.file);
             Size = 0;
         }
-    } while (Size);
+    };
 
     gs_free_object(pdev->pdf_memory, Scratch, "Free working memory for object rewriting");
     return 0;
@@ -2313,7 +2315,7 @@ error:
     for (i=0;i<pdev->next_page;i++) {
         page_hint_stream_t *pagehint = &linear_params->PageHints[i];
 
-        if (pagehint->SharedObjectRef)
+        if (pagehint && pagehint->SharedObjectRef)
             gs_free_object(pdev->pdf_memory, pagehint->SharedObjectRef, "Free Shared object references");
     }
 
@@ -2469,7 +2471,7 @@ pdf_close(gx_device * dev)
     pdf_linearisation_t linear_params;
 
     if (!dev->is_open)
-        return gs_error_undefined;
+      return_error(gs_error_undefined);
     dev->is_open = false;
 
     Catalog_id = pdev->Catalog->id;
@@ -2776,7 +2778,9 @@ pdf_close(gx_device * dev)
         for (pages = 0; pages <= pdev->next_page; ++pages)
             ;
 
-        code = ps2write_dsc_header(pdev, pages - 1);
+        code1 = ps2write_dsc_header(pdev, pages - 1);
+        if (code >= 0)
+            code = code1;
     }
 
     /* Copy the resources into the main file. */
@@ -2789,13 +2793,14 @@ pdf_close(gx_device * dev)
         int64_t res_end = gp_ftell_64(rfile);
 
         gp_fseek_64(rfile, 0L, SEEK_SET);
-        pdf_copy_data(s, rfile, res_end, NULL);
+        code1 = pdf_copy_data(s, rfile, res_end, NULL);
+        if (code >= 0)
+            code = code1;
     }
 
     if (pdev->ForOPDFRead && pdev->ProduceDSC) {
         int j;
 
-        code = 0;
         pagecount = 1;
 
         /* All resources and procsets written, end the prolog */
@@ -2960,9 +2965,9 @@ pdf_close(gx_device * dev)
          * debug builds of non-PS languages take a long time to close down
          * due to reporting the dangling memory allocations.
          */
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceFont].chains[j];
 
             for (; pres != 0;) {
@@ -2975,9 +2980,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceCIDFont].chains[j];
 
             for (; pres != 0;) {
@@ -2990,9 +2995,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceFontDescriptor].chains[j];
             for (; pres != 0;) {
                 pdf_font_descriptor_free(pdev, pres);
@@ -3002,9 +3007,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceCharProc].chains[j];
 
             for (; pres != 0;) {
@@ -3018,9 +3023,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceColorSpace].chains[j];
             for (; pres != 0;) {
                 free_color_space(pdev, pres);
@@ -3030,9 +3035,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceExtGState].chains[j];
 
             for (; pres != 0;) {
@@ -3047,9 +3052,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourcePattern].chains[j];
 
             for (; pres != 0;) {
@@ -3064,9 +3069,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceShading].chains[j];
 
             for (; pres != 0;) {
@@ -3081,9 +3086,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pres = pdev->resources[resourceGroup].chains[j];
 
             for (; pres != 0;) {
@@ -3098,9 +3103,9 @@ pdf_close(gx_device * dev)
     }
 
     {
-        int j, code = 0;
+        int j;
 
-        for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+        for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
             pdf_resource_t *pnext = 0, *pres = pdev->resources[resourceFunction].chains[j];
 
             for (; pres != 0;) {
@@ -3115,11 +3120,11 @@ pdf_close(gx_device * dev)
         }
     }
 
-    {
+    if (code >= 0) {
         int i, j;
 
         for (i = 0; i < NUM_RESOURCE_TYPES; i++) {
-            for (j = 0; j < NUM_RESOURCE_CHAINS && code >= 0; ++j) {
+            for (j = 0; j < NUM_RESOURCE_CHAINS; ++j) {
                 pdev->resources[i].chains[j] = 0;
             }
         }

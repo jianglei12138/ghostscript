@@ -143,7 +143,7 @@ process_composite_text(gs_text_enum_t *pte, void *vbuf, uint bsize)
             if (code < 0) {
                 if (code == gs_error_undefined && new_font && new_font->FontType == ft_encrypted2)
                 /* Caused by trying to make a CFF font resource for ps2write, which doesn't support CFF, abort now! */
-                    return gs_error_invalidfont;
+		  return_error(gs_error_invalidfont);
                 return code;
             }
             curr.xy_index = out.xy_index; /* pdf_encode_process_string advanced it. */
@@ -286,7 +286,11 @@ attach_cmap_resource(gx_device_pdf *pdev, pdf_font_resource_t *pdfont,
         if (pcmap->CMapName.size == strlen(*pcmn) &&
             !memcmp(*pcmn, pcmap->CMapName.data, pcmap->CMapName.size))
             break;
-    if (*pcmn == 0) {
+
+    /* For PDF/A we need to write out all non-identity CMaps
+     * first force the identity check.
+     */
+    if (*pcmn == 0 || pdev->PDFA != 0) {
         /*
          * PScript5.dll Version 5.2 creates identity CMaps with
          * instandard name. Check this specially here
@@ -295,7 +299,10 @@ attach_cmap_resource(gx_device_pdf *pdev, pdf_font_resource_t *pdfont,
          */
         is_identity = gs_cmap_is_identity(pcmap, font_index_only);
     }
-    if (*pcmn == 0 && !is_identity) {		/* not standard */
+    /* If the CMap is non-standard, or we are producing PDF/A, and its not
+     * an Identity CMap, then we need to emit it.
+     */
+    if ((*pcmn == 0  || pdev->PDFA != 0) && !is_identity) {		/* not standard */
         pcmres = pdf_find_resource_by_gs_id(pdev, resourceCMap, pcmap->id + font_index_only);
         if (pcmres == 0) {
             /* Create and write the CMap object. */
@@ -514,7 +521,7 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
                      */
                     pdev->type3charpath = 1;
                 pte->current_font = subfont;
-                return gs_error_undefined;
+                return_error(gs_error_undefined);
             }
             if (subfont->FontType == ft_encrypted || subfont->FontType == ft_encrypted2) {
                 font_change = (subfont != subfont0 && subfont0 != NULL);
@@ -605,6 +612,32 @@ scan_cmap_text(pdf_text_enum_t *pte, void *vbuf)
                                       (unsigned int)(glyph - GS_MIN_CID_GLYPH),
                                       buf);
                             pdsubf->used[cid >> 3] |= 0x80 >> (cid & 7);
+                            if (pdev->PDFA != 0) {
+                                switch (pdev->PDFACompatibilityPolicy) {
+                                    /* Default behaviour matches Adobe Acrobat, warn and continue,
+                                     * output file will not be PDF/A compliant
+                                     */
+                                    case 0:
+                                    case 1:
+                                    case 3:
+                                        emprintf(pdev->memory,
+                                             "All used glyphs mst be present in fonts for PDF/A, reverting to normal PDF output.\n");
+                                        pdev->AbortPDFAX = true;
+                                        pdev->PDFA = 0;
+                                        break;
+                                    case 2:
+                                        emprintf(pdev->memory,
+                                             "All used glyphs mst be present in fonts for PDF/A, aborting conversion.\n");
+                                        return_error(gs_error_invalidfont);
+                                        break;
+                                    default:
+                                        emprintf(pdev->memory,
+                                             "All used glyphs mst be present in fonts for PDF/A, unrecognised PDFACompatibilityLevel,\nreverting to normal PDF output\n");
+                                        pdev->AbortPDFAX = true;
+                                        pdev->PDFA = 0;
+                                        break;
+                                }
+                            }
                         }
                         cid = 0, code = 1;  /* undefined glyph. */
                         notdef_subst = true;

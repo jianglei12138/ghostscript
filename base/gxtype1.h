@@ -181,6 +181,19 @@ typedef fixed *cs_ptr;
       return_error(gs_error_invalidfont);\
   END
 
+#define CS_CHECK_POP(csp, cstack)\
+  BEGIN\
+    if (csp < &cstack[0])\
+      return_error(gs_error_invalidfont);\
+  END
+
+#define CS_CHECK_IPSTACK(ips, ipstack)\
+  BEGIN\
+    if (ips > &ipstack[ipstack_size + 1] \
+        || ips < &ipstack[0])\
+      return_error(gs_error_invalidfont);\
+  END
+
 /* Decode a 1-byte number. */
 #define decode_num1(var, c)\
   (var = c_value_num1(c))
@@ -220,7 +233,7 @@ typedef fixed *cs_ptr;
 
 /* Decode a 4-byte number, but don't push it, because Type 1 and Type 2 */
 /* charstrings scale it differently. */
-#if arch_sizeof_long > 4
+#if ARCH_SIZEOF_LONG > 4
 #  define sign_extend_num4(lw)\
      lw = (lw ^ 0x80000000L) - 0x80000000L
 #else

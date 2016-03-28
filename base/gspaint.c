@@ -38,7 +38,7 @@
 /* Define the nominal size for alpha buffers. */
 #define abuf_nominal_SMALL 500
 #define abuf_nominal_LARGE 2000
-#if arch_small_memory
+#if ARCH_SMALL_MEMORY
 #  define abuf_nominal abuf_nominal_SMALL
 #else
 #ifdef DEBUG
@@ -103,7 +103,7 @@ gs_fillpage(gs_state * pgs)
     if (dev->icc_struct != NULL &&
             dev->icc_struct->graydetection && !dev->icc_struct->pageneutralcolor) {
         dev->icc_struct->pageneutralcolor = true;	/* start detecting again */
-        gsicc_mcm_begin_monitor(pgs->icc_link_cache, dev);
+        code = gsicc_mcm_begin_monitor(pgs->icc_link_cache, dev);
     }
     if (code < 0)
         return code;

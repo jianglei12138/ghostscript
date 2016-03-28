@@ -17,6 +17,8 @@
 #include "math_.h"
 #include "memory_.h"
 #include "gx.h"
+#include "gsstruct.h"
+#include "gxobj.h"
 #include "gserrors.h"
 #include "gsropt.h"
 #include "gxcomp.h"
@@ -25,6 +27,7 @@
 #include "gdevp14.h"        /* Needed to patch up the procs after compositor creation */
 #include "gstrans.h"        /* For gs_pdf14trans_t */
 #include "gxistate.h"       /* for gs_image_state_s */
+
 
 /* defined in gsdpram.c */
 int gx_default_get_param(gx_device *dev, char *Param, void *list);
@@ -673,7 +676,10 @@ gx_device_fill_in_procs(register gx_device * dev)
     fill_dev_proc(dev, update_spot_equivalent_colors, gx_default_update_spot_equivalent_colors);
     fill_dev_proc(dev, ret_devn_params, gx_default_ret_devn_params);
     fill_dev_proc(dev, fillpage, gx_default_fillpage);
-    fill_dev_proc(dev, copy_alpha_hl_color, gx_default_copy_alpha_hl_color);
+    if ((dev_proc(dev, copy_planes) != NULL) &&
+        (dev_proc(dev, get_bits_rectangle) != NULL)) {
+        fill_dev_proc(dev, copy_alpha_hl_color, gx_default_copy_alpha_hl_color);
+    }
 
     /* NOT push_transparency_state */
     /* NOT pop_transparency_state */
@@ -943,15 +949,7 @@ gx_default_dev_spec_op(gx_device *pdev, int dev_spec_op, void *data, int size)
         case gxdso_is_std_cmyk_1bit:
             return (pdev->procs.map_cmyk_color == cmyk_1bit_map_cmyk_color);
         case gxdso_interpolate_antidropout:
-            if ((pdev->color_info.num_components == 1 &&
-                 pdev->color_info.max_gray < 15) ||
-                (pdev->color_info.num_components > 1 &&
-                 pdev->color_info.max_color < 15)) {
-                /* If we are are limited color device (i.e. we are halftoning)
-                 * then use the antidropout interpolators. */
-                return 1;
-            }
-            return 0;
+            return pdev->color_info.use_antidropout_downscaler;
         case gxdso_interpolate_threshold:
             if ((pdev->color_info.num_components == 1 &&
                  pdev->color_info.max_gray < 15) ||
@@ -968,7 +966,7 @@ gx_default_dev_spec_op(gx_device *pdev, int dev_spec_op, void *data, int size)
                 return gx_default_get_param(pdev, request->Param, request->list);
             }
     }
-    return gs_error_undefined;
+    return_error(gs_error_undefined);
 }
 
 int
@@ -977,7 +975,7 @@ gx_default_fill_rectangle_hl_color(gx_device *pdev,
     const gs_imager_state *pis, const gx_drawing_color *pdcolor,
     const gx_clip_path *pcpath)
 {
-    return gs_error_rangecheck;
+    return_error(gs_error_rangecheck);
 }
 
 int
@@ -1293,6 +1291,11 @@ int gx_device_subclass(gx_device *dev_to_subclass, gx_device *new_prototype, uns
     ptr = ((char *)dev_to_subclass) + sizeof(gx_device);
     ptr1 = ((char *)new_prototype) + sizeof(gx_device);
     memcpy(ptr, ptr1, new_prototype->params_size - sizeof(gx_device));
+
+    /* We have to patch up the "type" parameters that the memory manage/garbage
+     * collector will use, as well.
+     */
+    (((obj_header_t *)dev_to_subclass) - 1)->o_type = new_prototype->stype;
 
     /* If the original device's stype structure was dynamically allocated, we need
      * to 'fixup' the contents, it's procs need to point to the new device's procs

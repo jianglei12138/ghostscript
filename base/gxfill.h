@@ -19,6 +19,14 @@
 #ifndef gxfill_INCLUDED
 #  define gxfill_INCLUDED
 
+enum
+{
+    DIR_UP = 1,
+    DIR_HORIZONTAL = 0,
+    DIR_DOWN = -1,
+    DIR_OUT_OF_Y_RANGE = 2
+};
+
 /* Define the structure for keeping track of active lines. */
 #ifndef active_line_DEFINED
 #  define active_line_DEFINED
@@ -71,9 +79,6 @@ struct active_line_s {
     fixed x_next;		/* x position at end of band */
     const segment *pseg;	/* endpoint of this line */
     int direction;		/* direction of line segment */
-#define DIR_UP 1
-#define DIR_HORIZONTAL 0	/* (these are handled specially) */
-#define DIR_DOWN (-1)
     bool monotonic_x;		/* "false" means "don't know"; only for scanline. */
     bool monotonic_y;		/* "false" means "don't know"; only for scanline. */
     gx_flattened_iterator fi;
@@ -137,7 +142,7 @@ struct line_list_s {
     /* small displacements. */
     /* Allocate a few active_lines locally */
     /* to avoid round trips through the allocator. */
-#if arch_small_memory
+#if ARCH_SMALL_MEMORY
 #  define MAX_LOCAL_ACTIVE 6	/* don't overburden the stack */
 #  define MAX_LOCAL_SECTION 50
 #else

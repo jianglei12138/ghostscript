@@ -76,13 +76,13 @@ const gx_device_tiff gs_tiffgray_device = {
                     X_DPI, Y_DPI,
                     0, 0, 0, 0, /* Margins */
                     1, 8, 255, 0, 256, 0, tiffgray_print_page),
-    arch_is_big_endian          /* default to native endian (i.e. use big endian iff the platform is so*/,
+    ARCH_IS_BIG_ENDIAN          /* default to native endian (i.e. use big endian iff the platform is so*/,
     false,                      /* default to *not* bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ The tiffscaled device ------ */
@@ -109,13 +109,13 @@ const gx_device_tiff gs_tiffscaled_device = {
                     8,          /* bits per sample */
                     255, 0, 256, 0,
                     tiffscaled_print_page),
-    arch_is_big_endian,/* default to native endian (i.e. use big endian iff the platform is so */
+    ARCH_IS_BIG_ENDIAN,/* default to native endian (i.e. use big endian iff the platform is so */
     false,             /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ The tiffscaled8 device ------ */
@@ -142,13 +142,13 @@ const gx_device_tiff gs_tiffscaled8_device = {
                     8,          /* bits per sample */
                     255, 0, 256, 0,
                     tiffscaled8_print_page),
-    arch_is_big_endian,/* default to native endian (i.e. use big endian iff the platform is so */
+    ARCH_IS_BIG_ENDIAN,/* default to native endian (i.e. use big endian iff the platform is so */
     false,             /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ The tiffscaled24 device ------ */
@@ -175,13 +175,13 @@ const gx_device_tiff gs_tiffscaled24_device = {
                     24,         /* bits per sample */
                     255, 255, 256, 256,
                     tiffscaled24_print_page),
-    arch_is_big_endian,/* default to native endian (i.e. use big endian iff the platform is so */
+    ARCH_IS_BIG_ENDIAN,/* default to native endian (i.e. use big endian iff the platform is so */
     false,             /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ The tiffscaled32 device ------ */
@@ -191,7 +191,7 @@ static dev_proc_print_page(tiffscaled32_print_page);
 static const gx_device_procs tiffscaled32_procs = {
     tiff_open, NULL, NULL, gdev_prn_output_page_seekable, tiff_close,
     NULL, cmyk_8bit_map_color_cmyk, NULL, NULL, NULL, NULL, NULL, NULL,
-    tiff_get_params_downscale, tiff_put_params_downscale,
+    tiff_get_params_downscale_cmyk, tiff_put_params_downscale_cmyk,
     cmyk_8bit_map_cmyk_color, NULL, NULL, NULL, gx_page_device_get_page_device
 };
 
@@ -206,13 +206,13 @@ const gx_device_tiff gs_tiffscaled32_device = {
                     32,         /* bits per sample */
                     255, 255, 256, 256,
                     tiffscaled32_print_page),
-    arch_is_big_endian,/* default to native endian (i.e. use big endian iff the platform is so */
+    ARCH_IS_BIG_ENDIAN,/* default to native endian (i.e. use big endian iff the platform is so */
     false,             /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ The tiffscaled4 device ------ */
@@ -237,13 +237,13 @@ const gx_device_tiff gs_tiffscaled4_device = {
                     32,         /* bits per sample */
                     255, 255, 256, 256,
                     tiffscaled4_print_page),
-    arch_is_big_endian,/* default to native endian (i.e. use big endian iff the platform is so */
+    ARCH_IS_BIG_ENDIAN,/* default to native endian (i.e. use big endian iff the platform is so */
     false,             /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ Private functions ------ */
@@ -294,10 +294,11 @@ tiffscaled_print_page(gx_device_printer * pdev, FILE * file)
     tiff_set_gray_fields(pdev, tfdev->tif, 1, tfdev->Compression, tfdev->MaxStripSize);
 
     return tiff_downscale_and_print_page(pdev, tfdev->tif,
-                                         tfdev->DownScaleFactor,
-                                         tfdev->MinFeatureSize,
+                                         tfdev->downscale.downscale_factor,
+                                         tfdev->downscale.min_feature_size,
                                          tfdev->AdjustWidth,
-                                         1, 1);
+                                         1, 1,
+                                         0, 0, NULL);
 }
 
 static int
@@ -313,10 +314,11 @@ tiffscaled8_print_page(gx_device_printer * pdev, FILE * file)
     tiff_set_gray_fields(pdev, tfdev->tif, 8, tfdev->Compression, tfdev->MaxStripSize);
 
     return tiff_downscale_and_print_page(pdev, tfdev->tif,
-                                         tfdev->DownScaleFactor,
-                                         tfdev->MinFeatureSize,
+                                         tfdev->downscale.downscale_factor,
+                                         tfdev->downscale.min_feature_size,
                                          tfdev->AdjustWidth,
-                                         8, 1);
+                                         8, 1,
+                                         0, 0, NULL);
 }
 
 static void
@@ -356,10 +358,11 @@ tiffscaled24_print_page(gx_device_printer * pdev, FILE * file)
     tiff_set_rgb_fields(tfdev);
 
     return tiff_downscale_and_print_page(pdev, tfdev->tif,
-                                         tfdev->DownScaleFactor,
-                                         tfdev->MinFeatureSize,
+                                         tfdev->downscale.downscale_factor,
+                                         tfdev->downscale.min_feature_size,
                                          tfdev->AdjustWidth,
-                                         8, 3);
+                                         8, 3,
+                                         0, 0, NULL);
 }
 
 static void
@@ -393,10 +396,12 @@ tiffscaled32_print_page(gx_device_printer * pdev, FILE * file)
                          tfdev->MaxStripSize);
 
     return tiff_downscale_and_print_page(pdev, tfdev->tif,
-                                         tfdev->DownScaleFactor,
-                                         tfdev->MinFeatureSize,
+                                         tfdev->downscale.downscale_factor,
+                                         tfdev->downscale.min_feature_size,
                                          tfdev->AdjustWidth,
-                                         8, 4);
+                                         8, 4,
+                                         tfdev->downscale.trap_w, tfdev->downscale.trap_h,
+                                         tfdev->downscale.trap_order);
 }
 
 static int
@@ -416,10 +421,12 @@ tiffscaled4_print_page(gx_device_printer * pdev, FILE * file)
                          tfdev->MaxStripSize);
 
     return tiff_downscale_and_print_page(pdev, tfdev->tif,
-                                         tfdev->DownScaleFactor,
-                                         tfdev->MinFeatureSize,
+                                         tfdev->downscale.downscale_factor,
+                                         tfdev->downscale.min_feature_size,
                                          tfdev->AdjustWidth,
-                                         1, 4);
+                                         1, 4,
+                                         tfdev->downscale.trap_w, tfdev->downscale.trap_h,
+                                         tfdev->downscale.trap_order);
 }
 
 /* ------ The cmyk devices ------ */
@@ -444,13 +451,13 @@ const gx_device_tiff gs_tiff32nc_device = {
                     X_DPI, Y_DPI,
                     0, 0, 0, 0, /* Margins */
                     4, 32, 255, 255, 256, 256, tiffcmyk_print_page),
-    arch_is_big_endian          /* default to native endian (i.e. use big endian iff the platform is so*/,
+    ARCH_IS_BIG_ENDIAN          /* default to native endian (i.e. use big endian iff the platform is so*/,
     false,                      /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    true, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* 16-bit-per-plane separated CMYK color. */
@@ -465,13 +472,13 @@ const gx_device_tiff gs_tiff64nc_device = {
                     X_DPI, Y_DPI,
                     0, 0, 0, 0, /* Margins */
                     4, 64, 255, 255, 256, 256, tiffcmyk_print_page),
-    arch_is_big_endian          /* default to native endian (i.e. use big endian iff the platform is so*/,
+    ARCH_IS_BIG_ENDIAN          /* default to native endian (i.e. use big endian iff the platform is so*/,
     false,                      /* default to not bigtiff */
     COMPRESSION_NONE,
     TIFF_DEFAULT_STRIP_SIZE,
-    TIFF_DEFAULT_DOWNSCALE,
     0, /* Adjust size */
-    1  /* MinFeatureSize */
+    false, /* write_datetime */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* ------ Private functions ------ */
@@ -534,16 +541,16 @@ static dev_proc_output_page(tiffseps_output_page);
     TIFF *tiff[GX_DEVICE_COLOR_MAX_COMPONENTS]; \
     bool  BigEndian;            /* true = big endian; false = little endian */\
     bool  UseBigTIFF;           /* true = output bigtiff, false don't */ \
+    bool  write_datetime;       /* true = write DATETIME tag, false = don't */ \
     bool  PrintSpotCMYK;        /* true = print CMYK equivalents for spot inks; false = do nothing */\
     uint16 Compression;         /* for the separation files, same values as
                                    TIFFTAG_COMPRESSION */\
     bool close_files;\
     long MaxStripSize;\
-    long DownScaleFactor;\
-    long MinFeatureSize;\
     long BitsPerComponent;\
     int max_spots;\
     bool lock_colorants;\
+    gx_downscaler_params downscale;\
     gs_devn_params devn_params;         /* DeviceN generated parameters */\
     equivalent_cmyk_color_params equiv_cmyk_colors
 
@@ -703,17 +710,17 @@ gs_private_st_composite_final(st_tiffsep_device, tiffsep_device,
         prn_device_body_rest2_(print_page, print_page_copies, -1),\
         { 0 },                  /* tiff state for separation files */\
         { 0 },                  /* separation files */\
-        arch_is_big_endian      /* true = big endian; false = little endian */,\
+        ARCH_IS_BIG_ENDIAN      /* true = big endian; false = little endian */,\
         false,                  /* UseBigTIFF */\
+        true,                   /* write_datetime */ \
         false,                  /* PrintSpotCMYK */\
         compr                   /* COMPRESSION_* */,\
         true,                   /* close_files */ \
         TIFF_DEFAULT_STRIP_SIZE,/* MaxStripSize */\
-        1,                      /* DownScaleFactor */\
-        0,                      /* MinFeatureSize */\
         8,                      /* BitsPerComponent */\
         GS_SOFT_MAX_SPOTS,      /* max_spots */\
-        false                   /* Colorants not locked */
+        false,                  /* Colorants not locked */\
+        GX_DOWNSCALER_PARAMS_DEFAULTS
 
 #define GCIB (ARCH_SIZEOF_GX_COLOR_INDEX * 8)
 
@@ -732,7 +739,7 @@ const tiffsep_device gs_tiffsep_device =
 {
     tiffsep_devices_body(tiffsep_device, spot_cmyk_procs, "tiffsep", ARCH_SIZEOF_GX_COLOR_INDEX, GX_CINFO_POLARITY_SUBTRACTIVE, GCIB, MAX_COLOR_VALUE, MAX_COLOR_VALUE, GX_CINFO_SEP_LIN, "DeviceCMYK", tiffsep_print_page, tiffseps_print_page_copies, COMPRESSION_LZW),
     /* devn_params specific parameters */
-    { 8,                        /* Not used - Bits per color */
+    { 8,                        /* Ignored - Bits per color */
       DeviceCMYKComponents,     /* Names of color model colorants */
       4,                        /* Number colorants for CMYK */
       0,                        /* MaxSeparations has not been specified */
@@ -748,7 +755,7 @@ const tiffsep1_device gs_tiffsep1_device =
 {
     tiffsep_devices_body(tiffsep1_device, spot1_cmyk_procs, "tiffsep1", ARCH_SIZEOF_GX_COLOR_INDEX, GX_CINFO_POLARITY_SUBTRACTIVE, GCIB, MAX_COLOR_VALUE, MAX_COLOR_VALUE, GX_CINFO_SEP_LIN, "DeviceCMYK", tiffsep1_print_page, tiffseps_print_page_copies, COMPRESSION_CCITTFAX4),
     /* devn_params specific parameters */
-    { 8,                        /* Not used - Bits per color */
+    { 8,                        /* Ignored - Bits per color */
       DeviceCMYKComponents,     /* Names of color model colorants */
       4,                        /* Number colorants for CMYK */
       0,                        /* MaxSeparations has not been specified */
@@ -769,7 +776,7 @@ const tiffsep1_device gs_tiffsep1_device =
 #undef DECODE_COLOR
 
 static const uint32_t bit_order[32]={
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
         0x80000000, 0x40000000, 0x20000000, 0x10000000, 0x08000000, 0x04000000, 0x02000000, 0x01000000,
         0x00800000, 0x00400000, 0x00200000, 0x00100000, 0x00080000, 0x00040000, 0x00020000, 0x00010000,
         0x00008000, 0x00004000, 0x00002000, 0x00001000, 0x00000800, 0x00000400, 0x00000200, 0x00000100,
@@ -942,10 +949,6 @@ tiffsep_get_params(gx_device * pdev, gs_param_list * plist)
         ecode = code;
     if ((code = param_write_long(plist, "MaxStripSize", &pdevn->MaxStripSize)) < 0)
         ecode = code;
-    if ((code = param_write_long(plist, "DownScaleFactor", &pdevn->DownScaleFactor)) < 0)
-        ecode = code;
-    if ((code = param_write_long(plist, "MinFeatureSize", &pdevn->MinFeatureSize)) < 0)
-        ecode = code;
     if ((code = param_write_long(plist, "BitsPerComponent", &pdevn->BitsPerComponent)) < 0)
         ecode = code;
     if ((code = param_write_int(plist, "MaxSpots", &pdevn->max_spots)) < 0)
@@ -953,6 +956,11 @@ tiffsep_get_params(gx_device * pdev, gs_param_list * plist)
     if ((code = param_write_bool(plist, "LockColorants", &pdevn->lock_colorants)) < 0)
         ecode = code;
     if ((code = param_write_bool(plist, "PrintSpotCMYK", &pdevn->PrintSpotCMYK)) < 0)
+        ecode = code;
+
+    if ((code = gx_downscaler_write_params(plist, &pdevn->downscale,
+                                           GX_DOWNSCALER_PARAMS_MFS |
+                                           GX_DOWNSCALER_PARAMS_TRAP)) < 0)
         ecode = code;
 
     return ecode;
@@ -967,8 +975,6 @@ tiffsep_put_params(gx_device * pdev, gs_param_list * plist)
     const char *param_name;
     gs_param_string comprstr;
     bool save_close_files = pdevn->close_files;
-    long downscale = pdevn->DownScaleFactor;
-    long mfs = pdevn->MinFeatureSize;
     long bpc = pdevn->BitsPerComponent;
     int max_spots = pdevn->max_spots;
 
@@ -1014,12 +1020,15 @@ tiffsep_put_params(gx_device * pdev, gs_param_list * plist)
                 param_signal_error(plist, param_name, code);
                 return code;
             }
-
-            if (!tiff_compression_allowed(pdevn->Compression, pdevn->BitsPerComponent)) {
+            /* Because pdevn->BitsPerComponent is ignored for tiffsep(1) we have to get
+             * the value based on whether we're called from tiffsep or tiffsep1
+             */
+            bpc = (dev_proc(pdev, put_params) == tiffsep1_put_params) ? 1 : 8;
+            if (!tiff_compression_allowed(pdevn->Compression, bpc)) {
                 errprintf(pdevn->memory, "Invalid compression setting for this bitdepth\n");
 
                 param_signal_error(plist, param_name, gs_error_rangecheck);
-                return gs_error_rangecheck;
+                return_error(gs_error_rangecheck);
             }
             break;
         case 1:
@@ -1043,33 +1052,6 @@ tiffsep_put_params(gx_device * pdev, gs_param_list * plist)
             return code;
         case 1:
             break;
-    }
-    switch (code = param_read_long(plist,
-                                   (param_name = "DownScaleFactor"),
-                                   &downscale)) {
-        case 0:
-            if (downscale <= 0)
-                downscale = 1;
-            pdevn->DownScaleFactor = downscale;
-            break;
-        case 1:
-            break;
-        default:
-            param_signal_error(plist, param_name, code);
-            return code;
-    }
-    switch (code = param_read_long(plist, (param_name = "MinFeatureSize"), &mfs)) {
-        case 0:
-            if ((mfs >= 0) && (mfs <= 4)) {
-                pdevn->MinFeatureSize = mfs;
-                break;
-            }
-            code = gs_error_rangecheck;
-        case 1:
-            break;
-        default:
-            param_signal_error(plist, param_name, code);
-            return code;
     }
     switch (code = param_read_bool(plist, (param_name = "LockColorants"), 
             &(pdevn->lock_colorants))) {
@@ -1096,6 +1078,11 @@ tiffsep_put_params(gx_device * pdev, gs_param_list * plist)
             param_signal_error(plist, param_name, code);
             return code;
     }
+
+    code = gx_downscaler_read_params(plist, &pdevn->downscale,
+                                     GX_DOWNSCALER_PARAMS_MFS | GX_DOWNSCALER_PARAMS_TRAP);
+    if (code < 0)
+        return code;
 
     pdevn->close_files = false;
 
@@ -1401,23 +1388,49 @@ tiffsep_get_color_comp_index(gx_device * dev, const char * pname,
  */
 static void
 copy_separation_name(tiffsep_device * pdev,
-                char * buffer, int max_size, int sep_num)
+                char * buffer, int max_size, int sep_num, int escape)
 {
     int sep_size = pdev->devn_params.separations.names[sep_num].size;
     const byte *p = pdev->devn_params.separations.names[sep_num].data;
-    int i;
+    int r, w;
 
-    /* If name is too long then clip it. */
-    if (sep_size > max_size - 1)
-        sep_size = max_size - 1;
-    /* Avoid the use of '%' in names here. This is checked for here, rather
-     * than in gp_file_name_good_char, as this is NOT a requirement of the
-     * underlying file system, but rather a requirement of the code handling
-     * the separation names (where % is interpreted as a format specifier).
+    /* Previously the code here would simply replace any char that wasn't
+     * passed by gp_file_name_good_char (and %) with '_'. The grounds for
+     * gp_file_name_good_char are obvious enough. The reason for '%' is
+     * that the string gets fed to a printf style consumer later. It had
+     * problems in that any top bit set char was let through, which upset
+     * the file handling routines as they assume the filenames are in
+     * utf-8 format. */
+
+    /* New code: Copy the name, escaping non gp_file_name_good_char chars,
+     * % and top bit set chars using %02x format. In addition, if 'escape'
+     * is set, output % as %% to allow for printf later.
      */
-    for (i=0; i < sep_size; i++)
-        buffer[i] = (gp_file_name_good_char(p[i]) && p[i] != '%') ? p[i] : '_';
-    buffer[sep_size] = 0;       /* Terminate string */
+    r = 0;
+    w = 0;
+    while (r < sep_size && w < max_size-1)
+    {
+        int c = p[r++];
+        if (c >= 127 ||
+            !gp_file_name_good_char(c) ||
+            c == '%')
+        {
+            /* Top bit set, backspace, or char we can't represent on the
+             * filesystem. */
+            if (w + 2 + escape >= max_size-1)
+                break;
+            buffer[w++] = '%';
+            if (escape)
+                buffer[w++] = '%';
+            buffer[w++] = "0123456789ABCDEF"[c>>4];
+            buffer[w++] = "0123456789ABCDEF"[c&15];
+        }
+        else
+        {
+            buffer[w++] = c;
+        }
+    }
+    buffer[w] = 0;       /* Terminate string */
 }
 
 /*
@@ -1473,7 +1486,7 @@ create_separation_file_name(tiffsep_device * pdev, char * buffer,
         sep_num -= pdev->devn_params.num_std_colorant_names;
         if (use_sep_name) {
             copy_separation_name(pdev, buffer + base_filename_length,
-                                max_size - SUFFIX_SIZE - 2, sep_num);
+                                max_size - SUFFIX_SIZE - 2, sep_num, 1);
         } else {
                 /* Max of 10 chars in %d format */
             if (max_size < base_filename_length + 11)
@@ -1609,6 +1622,14 @@ tiffsep_prn_open(gx_device * pdev)
             force_ps = true;
         }
     }
+
+    /* For the planar device we need to set up the bit depth of each plane.
+       For other devices this is handled in check_device_separable where
+       we compute the bit shift for the components etc. */
+    for (k = 0; k < GS_CLIENT_COLOR_MAX_COMPONENTS; k++) {
+        pdev->color_info.comp_bits[k] = 8;
+    }
+
     /* With planar the depth can be more than 64.  Update the color
        info to reflect the proper depth and number of planes */
     pdev_sep->warning_given = false;
@@ -2182,8 +2203,8 @@ tiffsep_print_page(gx_device_printer * pdev, FILE * file)
     const char *fmt;
     gs_parsed_file_name_t parsed;
     int plane_count = 0;  /* quiet compiler */
-    int factor = tfdev->DownScaleFactor;
-    int mfs = tfdev->MinFeatureSize;
+    int factor = tfdev->downscale.downscale_factor;
+    int mfs = tfdev->downscale.min_feature_size;
     int dst_bpc = tfdev->BitsPerComponent;
     gx_downscaler_t ds;
     int width = gx_downscaler_scale(tfdev->width, factor);
@@ -2197,7 +2218,7 @@ tiffsep_print_page(gx_device_printer * pdev, FILE * file)
     if (num_order == 0) {
         for (sep_num = 0; sep_num < num_spot; sep_num++) {
             copy_separation_name(tfdev, name,
-                gp_file_name_sizeof - base_filename_length - SUFFIX_SIZE, sep_num);
+                gp_file_name_sizeof - base_filename_length - SUFFIX_SIZE, sep_num, 0);
             dmlprintf1(pdev->memory, "%%%%SeparationName: %s\n", name);
         }
     }
@@ -2230,7 +2251,7 @@ tiffsep_print_page(gx_device_printer * pdev, FILE * file)
         }
 
     }
-    code = tiff_set_fields_for_printer(pdev, tfdev->tiff_comp, factor, 0);
+    code = tiff_set_fields_for_printer(pdev, tfdev->tiff_comp, factor, 0, tfdev->write_datetime);
 
     if (dst_bpc == 1 || dst_bpc == 8) {
         tiff_set_cmyk_fields(pdev, tfdev->tiff_comp, dst_bpc, tfdev->Compression, tfdev->MaxStripSize);
@@ -2288,7 +2309,7 @@ tiffsep_print_page(gx_device_printer * pdev, FILE * file)
         }
 
         
-        code = tiff_set_fields_for_printer(pdev, tfdev->tiff[comp_num], factor, 0);
+        code = tiff_set_fields_for_printer(pdev, tfdev->tiff[comp_num], factor, 0, tfdev->write_datetime);
         tiff_set_gray_fields(pdev, tfdev->tiff[comp_num], dst_bpc, tfdev->Compression, tfdev->MaxStripSize);
         pdev->color_info.depth = save_depth;
         pdev->color_info.num_components = save_numcomps;
@@ -2394,8 +2415,10 @@ tiffsep_print_page(gx_device_printer * pdev, FILE * file)
                     }
                 }
             }
-            code = gx_downscaler_init_planar(&ds, (gx_device *)pdev, &params,
-                                             num_comp, factor, mfs, 8, dst_bpc);
+            code = gx_downscaler_init_planar_trapped(&ds, (gx_device *)pdev, &params,
+                                                     num_comp, factor, mfs, 8, dst_bpc,
+                                                     tfdev->downscale.trap_w, tfdev->downscale.trap_h,
+                                                     tfdev->downscale.trap_order);
             if (code < 0)
                 goto cleanup;
             byte_width = (width * dst_bpc + 7)>>3;
@@ -2594,7 +2617,7 @@ tiffsep1_print_page(gx_device_printer * pdev, FILE * file)
 
         pdev->color_info.depth = 8;     /* Create files for 8 bit gray */
         pdev->color_info.num_components = 1;
-        code = tiff_set_fields_for_printer(pdev, tfdev->tiff[comp_num], 1, 0);
+        code = tiff_set_fields_for_printer(pdev, tfdev->tiff[comp_num], 1, 0, tfdev->write_datetime);
         tiff_set_gray_fields(pdev, tfdev->tiff[comp_num], 1, tfdev->Compression, tfdev->MaxStripSize);
         pdev->color_info.depth = save_depth;
         pdev->color_info.num_components = save_numcomps;

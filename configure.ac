@@ -20,7 +20,7 @@ dnl Initialization and Versioning
 dnl ------------------------------------------------
 
 AC_INIT
-AC_PREREQ(2.60)
+AC_PREREQ(2.63)
 AC_LANG(C)
 AC_CONFIG_SRCDIR(psi/gs.c)
 
@@ -118,7 +118,7 @@ CONTRIBINCLUDE="include $srcdir/contrib/contrib.mak"
 INSTALL_CONTRIB="install-contrib-extras"
 
 case `uname` in
-    MINGW*)
+    MINGW*|MSYS*)
       AC_MSG_WARN([disabling contrib devices])
       enable_contrib=no
     ;;
@@ -262,34 +262,7 @@ dnl ----------------------------
 dnl check for big/little endian
 dnl ----------------------------
 
-BIGENDIAN=
-
-AC_MSG_CHECKING([for big endian])
-
-AC_ARG_ENABLE([big-endian], AC_HELP_STRING([--enable-big-endian],
-    [Force big endian]), [BIGENDIAN=1])
-
-if test x$BIGENDIAN = x; then
-  AC_ARG_ENABLE([little-endian], AC_HELP_STRING([--enable-little-endian],
-      [Force little endian]), [BIGENDIAN=0])
-fi
-
-if test x$BIGENDIAN = x ; then
-  AC_RUN_IFELSE(
-    [AC_LANG_PROGRAM([#include <stdio.h>], [
-     static const int one = 1;
-     return (*(char*)&one == 0 ? 0 : 1);
-    ])],
-    [BIGENDIAN=1;AC_MSG_RESULT(big)],
-    [BIGENDIAN=0;AC_MSG_RESULT(little)],
-    [BIGENDIAN=1;AC_MSG_RESULT(cross compiling: assuming big engian, otherwise use "--enable-little-endian")])
-else
-  if test x$BIGENDIAN = x1 ; then
-    AC_MSG_RESULT(big)
-  else
-    AC_MSG_RESULT(little)
-  fi
-fi
+AC_C_BIGENDIAN([BIGENDIAN=1], [BIGENDIAN=0])
 
 dnl --------------------------------------------------
 dnl check for sse2 intrinsics
@@ -419,6 +392,10 @@ if test "x$ac_cv_header_inttypes_h" = xyes; then
         GCFLAGS="$GCFLAGS -DHAVE_INTTYPES_H=1"
 fi
 
+AC_CHECK_LIB([dl], [dlopen],
+             [AC_CHECK_HEADER([dlfcn.h], [GCFLAGS="$GCFLAGS -DHAVE_LIBDL=1";LIBS="-ldl $LIBS"])]
+              )
+
 large_color_index=1
 
 AC_ARG_WITH([large_color_index],, large_color_index="$with_large_color_index")
@@ -426,13 +403,13 @@ AC_ARG_WITH([large_color_index],, large_color_index="$with_large_color_index")
 if test x"$large_color_index" != "x0"; then
   dnl try to find a 64 bit type for devicen color index
   color_ind_type="none"
-   AC_CHECK_SIZEOF(unsigned long int)
-   if test $ac_cv_sizeof_unsigned_long_int = 8; then
-          color_ind_type="unsigned long int"
-   else
-    AC_CHECK_SIZEOF(unsigned long long)
-    if test $ac_cv_sizeof_unsigned_long_long = 8; then
+   AC_CHECK_SIZEOF(unsigned long long)
+   if test $ac_cv_sizeof_unsigned_long_long = 8; then
           color_ind_type="unsigned long long"
+   else
+    AC_CHECK_SIZEOF(unsigned long int)
+    if test $ac_cv_sizeof_unsigned_long_int = 8; then
+          color_ind_type="unsigned long int"
     else
      AC_CHECK_SIZEOF(unsigned __int64)
      if test $ac_cv_sizeof_unsigned___int64 = 8; then
@@ -486,7 +463,6 @@ if test x$build_alias != x; then
 SUBCONFIG_OPTS="$SUBCONFIG_OPTS --build=$build_alias"
 fi
 
-
 dnl --------------------------------------------------
 dnl Check for libraries
 dnl --------------------------------------------------
@@ -518,7 +494,7 @@ AC_ARG_ENABLE([threading], AC_HELP_STRING([--disable-threading],
 if test "x$HAVE_PREAD_PWRITE" != "x"; then
   if test "$enable_threading" != "no"; then
     case `uname` in
-      MINGW*)
+      MINGW*|MSYS*)
         AC_MSG_WARN([disabling support for pthreads......])
       ;;
       *)
@@ -726,7 +702,6 @@ AC_SUBST(HAVE_DBUS)
 AC_SUBST(DBUS_CFLAGS)
 AC_SUBST(DBUS_LIBS)
 
-AC_CHECK_LIB(dl, dlopen)
 
 AC_ARG_ENABLE([freetype], AC_HELP_STRING([--disable-freetype],
         [Disable freetype for font rasterization]))
@@ -811,7 +786,7 @@ if test x"$enable_fapi" != xno; then
       fi
     done
 
-    if test -z $FTSRCDIR; then
+    if test x"$FTSRCDIR" = x"src"; then
       AC_MSG_RESULT([no])
       if test "x$PKGCONFIG" != x; then
         AC_MSG_CHECKING(for system freetype2 >= 2.4.2 with pkg-config)
@@ -957,7 +932,7 @@ AC_SUBST(FT_SYS_ZLIB)
 dnl png for the png output device; it also requires zlib
 LIBPNGDIR=src
 PNGDEVS=''
-PNGDEVS_ALL='png48 png16m pnggray pngmono png256 png16 pngalpha'
+PNGDEVS_ALL='png48 png16m pnggray pngmono pngmonod png256 png16 pngalpha'
 AC_MSG_CHECKING([for local png library source])
 if test -f $srcdir/libpng/pngread.c; then
         AC_MSG_RESULT([yes])
@@ -1257,7 +1232,7 @@ AC_ARG_WITH([ijs], AC_HELP_STRING([--without-ijs],
     [disable IJS driver support]))
 
 case `uname` in
-    MINGW*)
+    MINGW*|MSYS*)
       AC_MSG_WARN([disabling the ijs device])
       with_ijs=no
     ;;
@@ -1460,8 +1435,6 @@ if test x$with_luratech != xno; then
   fi
 fi
 
-OPENJPEGDIR=$srcdir/openjpeg
-
 if test "x$ac_cv_header_stdint_h" = "xyes"; then
   CFLAGS_OPJ_HAVE_STDINT_H="-DOPJ_HAVE_STDINT_H=1"
 else
@@ -1496,6 +1469,8 @@ AC_CHECK_DECL(lrintf, , [OPJ_LRINTF_SUBST="-D\"lrintf(a)\"=\"((long)(a+0.5))\"]"
 AC_ARG_ENABLE([openjpeg], AC_HELP_STRING([--disable-openjpeg],
         [Do not use OpenJPEG for JPX decoding]))
 
+OPENJPEGDIR=$srcdir/openjpeg
+
 if test "x$JPX_DECODER" = "x"; then
   if test "x$enable_openjpeg" != "xno"; then
     AC_MSG_CHECKING([for local OpenJPEG library source])
@@ -1517,12 +1492,31 @@ if test "x$JPX_DECODER" = "x"; then
       JPXDEVS='$(PSD)jpx.dev'
     else
       AC_MSG_RESULT([no])
+      if test x"$PKGCONFIG" != x""; then
+        AC_MSG_CHECKING(for OpenJPEG2)
+        if $PKGCONFIG --exists libopenjp2; then
+          JPX_AUTOCONF_CFLAGS="`$PKGCONFIG libopenjp2 --cflags` -DUSE_OPENJPEG_JP2"
+          JPX_AUTOCONF_LIBS="`$PKGCONFIG libopenjp2 --libs`"
+          SHARE_JPX=1
+          JPX_DECODER=openjpeg
+          AC_MSG_RESULT([yes])
+        else
+          AC_MSG_RESULT([no])
+        fi
+      else
+        AC_CHECK_LIB(openjp2, opj_stream_set_user_data,
+            [JPX_AUTOCONF_CFLAGS="$JPX_AUTOCONF_CFLAGS $OPJ_LRINTF_SUBST -DUSE_JPIP -DUSE_OPENJPEG_JP2 $CFLAGS_OPJ_HAVE_STDINT_H $CFLAGS_OPJ_HAVE_INTTYPES_H $CFLAGS_OPJ_BIGENDIAN $CFLAGS_OPJ_HAVE_FSEEKO";
+             JPX_AUTOCONF_LIBS="-lopenjp2";
+             SHARE_JPX=1]
+        )
+      fi
     fi
   fi
 fi
 
 AC_SUBST(JPX_DECODER)
 AC_SUBST(JPX_AUTOCONF_CFLAGS)
+AC_SUBST(JPX_AUTOCONF_LIBS)
 AC_SUBST(JPXDIR)
 AC_SUBST(SHARE_JPX)
 AC_SUBST(JPXDEVS)
@@ -1646,7 +1640,7 @@ AC_ARG_WITH([gs], AC_HELP_STRING([--with-gs=NAME],
         [GS="$with_gs"],[GS='gs'])
 AC_SUBST(GS)
 
-PCL=
+PCL=no_gpcl6
 PCL_TARGET=
 
 PLROMFS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
@@ -1678,7 +1672,7 @@ AC_SUBST(PCL_TOP_MAK)
 AC_SUBST(PXL_MAK)
 
 
-XPS=
+XPS=no_gxps
 XPS_TARGET=
 
 XPS_MAK="\$(GLSRCDIR)\$(D)stub.mak"
@@ -1701,7 +1695,7 @@ AC_SUBST(XPS_TARGET)
 AC_SUBST(XPS_MAK)
 AC_SUBST(XPSROMFS_MAK)
 
-GPDL=
+GPDL=no_gpdl
 GPDL_TARGET=
 
 GPDL_MAK="\$(GLSRCDIR)\$(D)stub.mak"
@@ -1806,7 +1800,7 @@ BMP_DEVS='bmpmono bmpgray bmpsep1 bmpsep8 bmp16 bmp256 bmp16m bmp32b'
 JPEG_DEVS='jpeg jpeggray jpegcmyk'
 # PNG_DEVS='png16 png16m png256 pngalpha pnggray pngmono'
 
-PCX_DEVS='pcxmono pcxgray pcx16 pcx256 pcx24b pcxcmyk pcx2up'
+PCX_DEVS='pcxmono pcxgray pcx16 pcx256 pcx24b pcxcmyk'
 PBM_DEVS='pbm pbmraw pgm pgmraw pgnm pgnmraw pnm pnmraw ppm ppmraw pkm pkmraw pksm pksmraw pam pamcmyk4 pamcmyk32 plan plang planm planc plank'
 PS_DEVS='psdf psdcmyk psdrgb pdfwrite ps2write eps2write bbox txtwrite inkcov ink_cov psdcmykog fpng'
 MISC_FDEVS='ccr cif inferno mag16 mag256 mgr4 mgr8 mgrgray2 mgrgray4 mgrgray8 mgrmono miff24 plan9bm sgirgb sunhmono bit bitrgb bitrgbtags bitcmyk devicen spotcmyk xcf plib plibg plibm plibc plibk gprf'
@@ -2068,13 +2062,13 @@ case `uname` in
           DYNAMIC_LDFLAGS="-shared -Wl,\$(LD_SET_DT_SONAME)\$(LDFLAGS_SO_PREFIX)\$(GS_SONAME_MAJOR)"
           if test $ac_cv_prog_gcc = yes; then
             # GCC high level flag
-            DYNAMIC_LIBS="-rdynamic -ldl"
+            DYNAMIC_LIBS="-rdynamic"
           else
             DYNAMIC_LIBS=""
           fi
           SO_LIB_EXT=".so"
         ;;
-        MINGW*)
+        MINGW*|MSYS*)
           DYNAMIC_CFLAGS=""
           DYNAMIC_LDFLAGS="-shared  -Wl,--out-implib=\$(BINDIR)/lib\$(GS_SO_BASE).dll.a -Wl,--export-all-symbols -Wl,--enable-auto-import"
           SO_LIB_EXT=""
@@ -2107,12 +2101,6 @@ case `uname` in
           DYNAMIC_CFLAGS="-fPIC"
           GCFLAGS="-Wl,-brtl $GCFLAGS"
           DYNAMIC_LDFLAGS="-shared -Wl,-brtl,-G -fPIC"
-          if test $ac_cv_prog_gcc = yes; then
-            # GCC high level flag
-            DYNAMIC_LIBS="-ldl"
-          else
-            DYNAMIC_LIBS=""
-          fi
           SO_LIB_EXT=".so"
         ;;
 esac
@@ -2230,6 +2218,13 @@ AC_SUBST(HAVE_SETLOCALE)
 AC_CHECK_FUNCS([strerror], [HAVE_STRERROR=-DHAVE_STRERROR])
 AC_SUBST(HAVE_STRERROR)
 
+AC_CHECK_FUNCS([isnan], [HAVE_ISNAN=-DHAVE_ISNAN])
+AC_SUBST(HAVE_ISNAN)
+
+AC_CHECK_FUNCS([isinf], [HAVE_ISINF=-DHAVE_ISINF])
+AC_SUBST(HAVE_ISINF)
+
+
 AC_PROG_GCC_TRADITIONAL
 
 dnl NB: We don't actually provide autoconf-switched fallbacks for any
@@ -2255,9 +2250,13 @@ esac
 dnl --------------------------------------------------
 dnl set big/little endian for LCMS
 dnl --------------------------------------------------
+LCMS_ENDIAN=
+LCMS2_ENDIAN=
 
-LCMS_ENDIAN="-DUSE_BIG_ENDIAN=$BIGENDIAN"
-LCMS2_ENDIAN="-DCMS_USE_BIG_ENDIAN=$BIGENDIAN"
+if test x"$BIGENDIAN" != x""; then
+  LCMS_ENDIAN="-DUSE_BIG_ENDIAN=$BIGENDIAN"
+  LCMS2_ENDIAN="-DCMS_USE_BIG_ENDIAN=$BIGENDIAN"
+fi
 
 AC_SUBST(LCMS_ENDIAN)
 AC_SUBST(LCMS2_ENDIAN)
@@ -2440,7 +2439,7 @@ AC_SUBST(SUB_MAKE_OPTION)
 # --------------------------------------------------
 AUXDIRPOSTFIX=""
 case `uname` in
-    MINGW*)
+    MINGW*|MSYS*)
     AUXDIRPOSTFIX="_"
     CFLAGS="-DGS_NO_UTF8=1 $CFLAGS"
     ;;
@@ -2460,7 +2459,7 @@ if test "x"$with_exe_ext != "x"; then
   EXEEXT="$with_exe_ext"
 else
   case `uname` in
-    MINGW*)
+    MINGW*|MSYS*)
       EXEEXT=".exe"
     ;;
   esac

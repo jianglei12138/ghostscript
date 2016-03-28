@@ -45,7 +45,7 @@ void gx_ht_construct_spot_order(gx_ht_order *);
 int gx_ht_construct_threshold_order(gx_ht_order *, const byte *);
 void gx_ht_construct_bit(gx_ht_bit * bit, int width, int bit_num);
 void gx_ht_construct_bits(gx_ht_order *);
-bool gx_transfer_is_monotonic(gs_imager_state *pis, int plane_index);
+bool gx_transfer_is_monotonic(const gs_imager_state *pis, int plane_index);
 int gx_ht_construct_threshold(gx_ht_order *d_order, gx_device *dev,
                               const gs_imager_state * pis, int plane_index);
 
@@ -136,7 +136,7 @@ struct gx_ht_cache_s {
 #define max_ht_cached_tiles_SMALL 256
 #define max_ht_cache_bits_size_SMALL 8192	/* enough for 256 levels 8x8 */
 
-#if arch_small_memory
+#if ARCH_SMALL_MEMORY
 #  define max_ht_cached_tiles max_ht_cached_tiles_SMALL
 #  define max_ht_cache_bits_size max_ht_cache_bits_size_SMALL
 #else

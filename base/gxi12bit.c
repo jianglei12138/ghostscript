@@ -42,7 +42,7 @@
 
 /* ---------------- Unpacking procedures ---------------- */
 
-static const byte *
+const byte *
 sample_unpack_12(byte * bptr, int *pdata_x, const byte * data,
                  int data_x, uint dsize, const sample_map *ignore_smap, int spread,
                  int ignore_num_components_per_plane)
@@ -98,8 +98,6 @@ sample_unpack_12(byte * bptr, int *pdata_x, const byte * data,
     return bptr;
 }
 
-const sample_unpack_proc_t sample_unpack_12_proc = sample_unpack_12;
-
 /* ------ Strategy procedure ------ */
 
 /* Check the prototype. */
@@ -148,6 +146,8 @@ gs_image_class_2_fracs(gx_image_enum * penum)
             cmm_dev_profile_t *dev_profile;
 
             code = dev_proc(penum->dev, get_profile)(penum->dev, &dev_profile);
+            if (code < 0)
+                return 0;
             num_des_comps = gsicc_get_device_profile_comps(dev_profile);
             penum->icc_setup.need_decode = false;
             /* Check if we need to do any decoding.  If yes, then that will slow us down */
@@ -179,7 +179,7 @@ gs_image_class_2_fracs(gx_image_enum * penum)
                     &rendering_params, penum->memory);
             }
             /* Use the direct unpacking proc */
-            penum->unpack = sample_unpackicc_16_proc;
+            penum->unpack = sample_unpackicc_16;
             if_debug0m('b', penum->memory, "[b]render=icc16\n");
             return &image_render_icc16;
         }
@@ -191,7 +191,7 @@ gs_image_class_2_fracs(gx_image_enum * penum)
 
 /* ------ Rendering for 12-bit samples ------ */
 
-#define FRACS_PER_LONG (arch_sizeof_long / arch_sizeof_frac)
+#define FRACS_PER_LONG (ARCH_SIZEOF_LONG / arch_sizeof_frac)
 typedef union {
     frac v[GS_IMAGE_MAX_COLOR_COMPONENTS];
 #define LONGS_PER_COLOR_FRACS\
@@ -199,7 +199,7 @@ typedef union {
     long all[LONGS_PER_COLOR_FRACS];	/* for fast comparison */
 } color_fracs;
 
-#define LONGS_PER_4_FRACS ((arch_sizeof_frac * 4 + arch_sizeof_long - 1) / arch_sizeof_long)
+#define LONGS_PER_4_FRACS ((arch_sizeof_frac * 4 + ARCH_SIZEOF_LONG - 1) / ARCH_SIZEOF_LONG)
 #if LONGS_PER_4_FRACS == 1
 #  define COLOR_FRACS_4_EQ(f1, f2)\
      ((f1).all[0] == (f2).all[0])
@@ -593,7 +593,6 @@ image_render_icc16(gx_image_enum * penum, const byte * buffer, int data_x,
     fixed xprev, yprev;
     fixed pdyx, pdyy;		/* edge of parallelogram */
     int vci, vdi;
-    const gs_color_space *pcs;
     gx_device_color devc1;
     gx_device_color devc2;
     gx_device_color *pdevc;
@@ -631,11 +630,6 @@ image_render_icc16(gx_image_enum * penum, const byte * buffer, int data_x,
     }
     /* Needed for device N */
     memset(&(conc[0]), 0, sizeof(gx_color_value[GX_DEVICE_COLOR_MAX_COMPONENTS]));
-    if (gs_color_space_is_PSCIE(penum->pcs) && penum->pcs->icc_equivalent != NULL) {
-        pcs = penum->pcs->icc_equivalent;
-    } else {
-        pcs = penum->pcs;
-    }
     pdevc = &devc1;
     pdevc_next = &devc2;
     /* These used to be set by init clues */

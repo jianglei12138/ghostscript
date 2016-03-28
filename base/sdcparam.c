@@ -262,7 +262,6 @@ s_DCT_get_huffman_tables(gs_param_list * plist,
     gs_param_string *huff_data;
     gs_param_string_array hta;
     int num_in_tables;
-    jpeg_component_info *comp_info;
     JHUFF_TBL **dc_table_ptrs;
     JHUFF_TBL **ac_table_ptrs;
     int i;
@@ -272,7 +271,6 @@ s_DCT_get_huffman_tables(gs_param_list * plist,
         dc_table_ptrs = pdct->data.compress->cinfo.dc_huff_tbl_ptrs;
         ac_table_ptrs = pdct->data.compress->cinfo.ac_huff_tbl_ptrs;
         num_in_tables = pdct->data.compress->cinfo.input_components * 2;
-        comp_info = pdct->data.compress->cinfo.comp_info;
     } else {
         dc_table_ptrs = pdct->data.decompress->dinfo.dc_huff_tbl_ptrs;
         ac_table_ptrs = pdct->data.decompress->dinfo.ac_huff_tbl_ptrs;
@@ -280,7 +278,6 @@ s_DCT_get_huffman_tables(gs_param_list * plist,
             if (dc_table_ptrs[i - 1] || ac_table_ptrs[i - 1])
                 break;
         num_in_tables = i * 2;
-        comp_info = NULL;	/* do not set for decompress case */
     }
 /****** byte_array IS WRONG ******/
     huff_data = (gs_param_string *)
@@ -334,34 +331,52 @@ s_DCT_byte_params(gs_param_list * plist, gs_param_name key, int start,
     int i;
     gs_param_string bytes;
     gs_param_float_array floats;
+    gs_param_int_array ints;
     int code = param_read_string(plist, key, &bytes);
 
     switch (code) {
         case 0:
             if (bytes.size < start + count) {
                 code = gs_note_error(gs_error_rangecheck);
-                break;
+            } else {
+                for (i = 0; i < count; ++i)
+                    pvals[i] = (UINT8) bytes.data[start + i];
+                code = 0;
             }
-            for (i = 0; i < count; ++i)
-                pvals[i] = (UINT8) bytes.data[start + i];
-            return 0;
+            break;
         default:		/* might be a float array */
-            code = param_read_float_array(plist, key, &floats);
+            code = param_read_int_array(plist, key, &ints);
             if (!code) {
-                if (floats.size < start + count) {
+                if (ints.size < start + count) {
                     code = gs_note_error(gs_error_rangecheck);
-                    break;
-                }
-                for (i = 0; i < count; ++i) {
-                    float v = floats.data[start + i];
-
-                    if (v < 0 || v > 255) {
-                        code = gs_note_error(gs_error_rangecheck);
-                        break;
+                } else {
+                    for (i = 0; i < count; ++i) {
+                        pvals[i] = ints.data[start + i];
                     }
-                    pvals[i] = (UINT8) (v + 0.5);
+                    code = 0;
                 }
+            } else {
+                code = param_read_float_array(plist, key, &floats);
+                if (!code) {
+                    if (floats.size < start + count) {
+                        code = gs_note_error(gs_error_rangecheck);
+                    } else {
+                        for (i = 0; i < count; ++i) {
+                            float v = floats.data[start + i];
+
+                            if (v < 0 || v > 255) {
+                                code = gs_note_error(gs_error_rangecheck);
+                                break;
+                            }
+                            pvals[i] = (UINT8) (v + 0.5);
+                        }
+                    }
+                    if (code >= 0)
+                        code = 0;
+                } else
+                    code = 1;
             }
+            break;
     }
     if (code < 0)
         param_signal_error(plist, key, code);

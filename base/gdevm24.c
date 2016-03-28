@@ -83,7 +83,7 @@ mem_full_alpha_device("image24", 24, 0, mem_open,
         *(bits32 *)(ptr) = (wxyz)
 /* Load the 3-word 24-bit-color cache. */
 /* Free variables: [m]dev, rgbr, gbrg, brgb. */
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
 #  define set_color24_cache(crgb, r, g, b)\
         mdev->color24.rgbr = rgbr = ((bits32)(crgb) << 8) | (r),\
         mdev->color24.gbrg = gbrg = (rgbr << 8) | (g),\
@@ -508,20 +508,31 @@ mem_true24_copy_alpha(gx_device * dev, const byte * base, int sourcex,
         for (sx = sourcex; sx < sourcex + w; ++sx, pptr += 3) {
             int alpha2, alpha;
 
-            if (depth == 2)	/* map 0 - 3 to 0 - 15 */
+            switch(depth)
+            {
+            case 2:	/* map 0 - 3 to 0 - 255 */
                 alpha =
-                    ((line[sx >> 2] >> ((3 - (sx & 3)) << 1)) & 3) * 5;
-            else
-                alpha2 = line[sx >> 1],
-                    alpha = (sx & 1 ? alpha2 & 0xf : alpha2 >> 4);
-            if (alpha == 15) {	/* Just write the new color. */
+                    ((line[sx >> 2] >> ((3 - (sx & 3)) << 1)) & 3) * 85;
+                break;
+            case 4:
+                alpha2 = line[sx >> 1];
+                alpha = (sx & 1 ? alpha2 & 0xf : alpha2 >> 4) * 17;
+                break;
+            case 8:
+                alpha = line[sx];
+                break;
+            default:
+                return_error(gs_error_rangecheck);
+            }
+            if (alpha == 255) {	/* Just write the new color. */
                 put3(pptr, r, g, b);
             } else if (alpha != 0) {	/* Blend RGB values. */
-#define make_shade(old, clr, alpha, amax) \
-  (old) + (((int)(clr) - (int)(old)) * (alpha) / (amax))
-                pptr[0] = make_shade(pptr[0], r, alpha, 15);
-                pptr[1] = make_shade(pptr[1], g, alpha, 15);
-                pptr[2] = make_shade(pptr[2], b, alpha, 15);
+                alpha += alpha>>7;
+#define make_shade(old, clr, alpha) \
+  ((((old)<<8) + ((int)(clr) - (int)(old)) * (alpha))>>8)
+                pptr[0] = make_shade(pptr[0], r, alpha);
+                pptr[1] = make_shade(pptr[1], g, alpha);
+                pptr[2] = make_shade(pptr[2], b, alpha);
 #undef make_shade
             }
         }
@@ -536,7 +547,7 @@ mem_true24_copy_alpha(gx_device * dev, const byte * base, int sourcex,
 /* Note that on a big-endian machine, this is the same as the */
 /* standard byte-oriented-device. */
 
-#if !arch_is_big_endian
+#if !ARCH_IS_BIG_ENDIAN
 
 /* Procedures */
 declare_mem_procs(mem24_word_copy_mono, mem24_word_copy_color, mem24_word_fill_rectangle);
@@ -609,4 +620,4 @@ mem24_word_copy_color(gx_device * dev,
     return 0;
 }
 
-#endif /* !arch_is_big_endian */
+#endif /* !ARCH_IS_BIG_ENDIAN */

@@ -678,9 +678,9 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
         float max_dash_len = 0;
         float expand_squared;
         int i;
-        float adjust = pis->fill_adjust.x;
-        if (adjust > pis->fill_adjust.y)
-            adjust = pis->fill_adjust.y;
+        float adjust = (float)pis->fill_adjust.x;
+        if (adjust > (float)pis->fill_adjust.y)
+            adjust = (float)pis->fill_adjust.y;
         for (i = 0; i < dash_count; i++) {
             if (max_dash_len < pgs_lp->dash.pattern[i])
                 max_dash_len = pgs_lp->dash.pattern[i];
@@ -720,6 +720,7 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
         bool is_closed = ((const subpath *)pseg)->is_closed;
         partial_line pl, pl_prev, pl_first;
         bool zero_length = true;
+        int pseg_notes = pseg->notes;
 
         flags = nf_all_from_arc;
 
@@ -733,9 +734,12 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
             /* Compute the width parameters in device space. */
             /* We work with unscaled values, for speed. */
             fixed sx, udx, sy, udy;
-            bool is_dash_segment = false;
+            bool is_dash_segment;
 
-        d1:if (pseg->type == s_dash) {
+            pseg_notes = pseg->notes;
+
+         d2:is_dash_segment = false;
+         d1:if (pseg->type == s_dash) {
                 dash_segment *pd = (dash_segment *)pseg;
 
                 sx = pd->pt.x;
@@ -757,10 +761,10 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
             }
             zero_length &= ((udx | udy) == 0);
             pl.o.p.x = x, pl.o.p.y = y;
-          d:flags = (((pseg->notes & sn_not_first) ?
+          d:flags = (((pseg_notes & sn_not_first) ?
                       ((flags & nf_all_from_arc) | nf_some_from_arc) : 0) |
-                     ((pseg->notes & sn_dash_head) ? nf_dash_head : 0)    |
-                     ((pseg->notes & sn_dash_tail) ? nf_dash_tail : 0)    |
+                     ((pseg_notes & sn_dash_head) ? nf_dash_head : 0)    |
+                     ((pseg_notes & sn_dash_tail) ? nf_dash_tail : 0)    |
                      (flags & ~nf_all_from_arc));
             pl.e.p.x = sx, pl.e.p.y = sy;
             if (!(udx | udy) || pseg->type == s_dash || pseg->type == s_gap) { /* degenerate or short */
@@ -770,7 +774,20 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
                  * Otherwise, ignore the degenerate segment.
                  */
                 if (index != 0 && pseg->type != s_dash && pseg->type != s_gap)
-                    continue;
+                {
+                    if (pseg->next == NULL || pseg->next->type == s_start)
+                        continue;
+                    pseg = pseg->next;
+                    /* We're skipping a degenerate path segment; if it was
+                     * labelled as being the first from a curve, then make
+                     * sure the one we're skipping to is also labelled as
+                     * being the first from a curve, otherwise we can get
+                     * improper joins being used. See Bug 696466. */
+                    pseg_notes = (((pseg_notes & sn_not_first) == 0) ?
+                                  (pseg->notes & ~sn_not_first) :
+                                  pseg->notes);
+                    goto d2;
+                }
                 /* Check for a degenerate subpath. */
                 while ((pseg = pseg->next) != 0 &&
                        pseg->type != s_start
@@ -942,7 +959,7 @@ gx_stroke_path_only_aux(gx_path * ppath, gx_path * to_path, gx_device * pdev,
             }
             if (index++) {
                 gs_line_join join =
-                    (pseg->notes & not_first ? curve_join : pgs_lp->join);
+                    (pseg_notes & not_first ? curve_join : pgs_lp->join);
                 int first;
                 pl_ptr lptr;
                 bool ensure_closed;
@@ -1608,6 +1625,50 @@ stroke_add(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
     return gx_path_close_subpath(ppath);
 }
 
+/* When painting the 'underjoin' (the 'inside' of a join), we
+ * need to take special care if the curve is particularly wide as
+ * the leading edge of the underside of the first stroked segment
+ * may be beyond the leading edge of the underside of the second
+ * stroked segment. Similarly, the trailing edge of the second
+ * stroked segment may be behing the trailing edge of the first
+ * stroked segment. We detect those cases here.
+ *
+ * We detect the first case by projecting plp.width onto nplp.vector.
+ * If the projected vector is longer then nplp.vector, we have a
+ * problem.
+ *
+ * len_vector_squared = nplp.vector.x * nplp.vector.x + nplp.vector.y * nplp.nvector.y
+ * len_vector = sqr(len_vector_squared)
+ * len_projection_unnormalised = plp.width.x * nplp.vector.x + plp.width.y * nplp.vector.y
+ * len_projection = len_projection_unnormalised / len_vector
+ *
+ * len_projection > len_vector === len_projection_unnormalised > len_vector * len_vector
+ * === len_projection_unnormalised > len_vector_squared
+ */
+
+#ifdef SLOWER_BUT_MORE_ACCURATE_STROKING
+static bool
+wide_underjoin(pl_ptr plp, pl_ptr nplp)
+{
+    double h_squared = (double)nplp->vector.x * nplp->vector.x + (double)nplp->vector.y * nplp->vector.y;
+    double dot = (double)plp->width.x * nplp->vector.x + (double)plp->width.y * nplp->vector.y;
+
+    if (dot < 0)
+        dot = -dot;
+    if (dot > h_squared)
+        return 1;
+
+    h_squared = (double)plp->vector.x * plp->vector.x + (double)plp->vector.y * plp->vector.y;
+    dot = (double)nplp->width.x * plp->vector.x + (double)nplp->width.y * plp->vector.y;
+    if (dot < 0)
+        dot = -dot;
+    if (dot > h_squared)
+        return 1;
+
+    return 0;
+}
+#endif
+
 /* Add a segment to the path.
  * This works by crafting 2 paths, one for each edge, that will later be
  * merged together. */
@@ -1715,8 +1776,7 @@ stroke_add_fast(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
              * line segments generated from arcs to be round. This would
              * solve some flatness issues, but makes some pathological
              * cases incredibly slow. */
-            if ((join == gs_join_round)
-                /* || (flags & nf_all_from_arc) */) {
+            if (join == gs_join_round /* || (flags & nf_all_from_arc) */) {
                 code = add_pie_join_fast_ccw(ppath, plp, nplp, reflected);
             } else { /* non-round join */
                 code = line_join_points_fast_ccw(pgs_lp, plp, nplp,
@@ -1729,7 +1789,8 @@ stroke_add_fast(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
             if (code < 0)
                 return code;
             /* The underjoin */
-            if (!(flags & nf_some_from_arc)) {
+#ifndef SLOWER_BUT_MORE_ACCURATE_STROKING
+            if ((flags & (nf_some_from_arc | nf_prev_some_from_arc)) == 0) {
                 /* RJW: This is an approximation. We ought to draw a line
                  * back to nplp->o.p, and then independently fill any exposed
                  * region under the curve with a round join. Sadly, that's
@@ -1742,10 +1803,31 @@ stroke_add_fast(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
                  * most cases it's close, and results in faster to fill
                  * paths.
                  */
+                /* RJW: This goes wrong for some paths, as the 'underjoin' wind
+                 * will be the wrong way. See bug 694971 */
                 code = gx_path_add_line(rpath, nplp->o.p.x, nplp->o.p.y);
                 if (code < 0)
                     return code;
             }
+#else
+            if (wide_underjoin(plp, nplp))
+            {
+                code = gx_path_add_line(rpath, nplp->o.p.x, nplp->o.p.y);
+                if (code < 0)
+                    return code;
+                if ((flags & (nf_some_from_arc | nf_prev_some_from_arc)) != 0) {
+                    code = gx_path_add_line(rpath, nplp->o.co.x, nplp->o.co.y);
+                    if (code < 0)
+                        return code;
+                    code = gx_path_add_line(rpath, plp->e.ce.x, plp->e.ce.y);
+                    if (code < 0)
+                        return code;
+                    code = gx_path_add_line(rpath, nplp->o.p.x, nplp->o.p.y);
+                    if (code < 0)
+                        return code;
+                }
+            }
+#endif
             code = gx_path_add_line(rpath, nplp->o.co.x, nplp->o.co.y);
         } else {
             /* CW rotation. Join in the reverse path. "Underjoin" in the
@@ -1755,8 +1837,7 @@ stroke_add_fast(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
              * line segments generated from arcs to be round. This would
              * solve some flatness issues, but makes some pathological
              * cases incredibly slow. */
-            if ((join == gs_join_round)
-                /* || (flags & nf_all_from_arc) */) {
+            if (join == gs_join_round /* || (flags & nf_all_from_arc) */) {
                 code = add_pie_join_fast_cw(rpath, plp, nplp, reflected);
             } else { /* non-round join */
                 code = line_join_points_fast_cw(pgs_lp, plp, nplp,
@@ -1769,7 +1850,8 @@ stroke_add_fast(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
             if (code < 0)
                 return code;
             /* The underjoin */
-            if (!(flags & nf_some_from_arc)) {
+#ifndef SLOWER_BUT_MORE_ACCURATE_STROKING
+            if ((flags & (nf_some_from_arc | nf_prev_some_from_arc)) == 0) {
                 /* RJW: This is an approximation. We ought to draw a line
                  * back to nplp->o.p, and then independently fill any exposed
                  * region under the curve with a round join. Sadly, that's
@@ -1782,10 +1864,31 @@ stroke_add_fast(gx_path * ppath, gx_path * rpath, bool ensure_closed, int first,
                  * most cases it's close, and results in faster to fill
                  * paths.
                  */
+                /* RJW: This goes wrong for some paths, as the 'underjoin' wind
+                 * will be the wrong way. See bug 694971 */
                 code = gx_path_add_line(ppath, nplp->o.p.x, nplp->o.p.y);
                 if (code < 0)
                     return code;
             }
+#else
+            if (wide_underjoin(plp, nplp))
+            {
+                code = gx_path_add_line(ppath, nplp->o.p.x, nplp->o.p.y);
+                if (code < 0)
+                    return code;
+                if ((flags & (nf_some_from_arc | nf_prev_some_from_arc)) != 0) {
+                    code = gx_path_add_line(ppath, nplp->o.ce.x, nplp->o.ce.y);
+                    if (code < 0)
+                        return code;
+                    code = gx_path_add_line(ppath, plp->e.co.x, plp->e.co.y);
+                    if (code < 0)
+                        return code;
+                    code = gx_path_add_line(ppath, nplp->o.p.x, nplp->o.p.y);
+                    if (code < 0)
+                        return code;
+                }
+            }
+#endif
             code = gx_path_add_line(ppath, nplp->o.ce.x, nplp->o.ce.y);
         }
     }

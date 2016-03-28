@@ -77,6 +77,7 @@ public_st_cmap_lookup_range_element();
  */
 
 #ifndef GS_THREADSAFE
+#ifdef DEBUG
 static void
 print_msg_str_in_range(const byte *str,
                        const byte *key_lo, const byte *key_hi,
@@ -89,6 +90,7 @@ print_msg_str_in_range(const byte *str,
     debug_print_string_hex_nomem(key_hi, key_size);
     dlprintf("\n");
 }
+#endif
 #endif
 
 static int
@@ -373,7 +375,6 @@ gs_cmap_adobe1_decode_next(const gs_cmap_t * pcmap_in,
 
     uint pm_index;
     uint pm_fidx;
-    gs_char pm_chr;
 
     /* For first, check defined map */
     if_debug0('J', "[J]GCDN() check def CMap\n");
@@ -388,7 +389,6 @@ gs_cmap_adobe1_decode_next(const gs_cmap_t * pcmap_in,
     /* save partially matched results */
     pm_index = *pindex;
     pm_fidx = *pfidx;
-    pm_chr = *pchr;
 
     /* check notdef map. */
     if_debug0('J', "[J]GCDN() check notdef CMap\n");

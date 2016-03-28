@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2015 Artifex Software, Inc.
+# Copyright (C) 2001-2016 Artifex Software, Inc.
 # All Rights Reserved.
 #
 # This software is provided AS-IS with no warranty, either express or
@@ -79,7 +79,7 @@ INSTALL_PROGRAM = $(INSTALL) -m 755
 INSTALL_DATA = $(INSTALL) -m 644
 INSTALL_SHARED = 
 
-prefix = /usr/local
+prefix = /system/usr/root
 exec_prefix = ${prefix}
 bindir = ${exec_prefix}/bin
 scriptdir = $(bindir)
@@ -164,16 +164,16 @@ GENOPT=
 # -DHAVE_SSE2
 #       use sse2 intrinsics
 
-CAPOPT= -DHAVE_MKSTEMP  -DHAVE_FSEEKO  -DHAVE_FONTCONFIG  -DHAVE_SETLOCALE   -DHAVE_BSWAP32 -DHAVE_BYTESWAP_H -DHAVE_STRERROR -DHAVE_PREAD_PWRITE=1 -DGS_RECURSIVE_MUTEXATTR=PTHREAD_MUTEX_RECURSIVE
+CAPOPT= -DHAVE_MKSTEMP  -DHAVE_FSEEKO  -DHAVE_FONTCONFIG  -DHAVE_SETLOCALE   -DHAVE_BSWAP32 -DHAVE_BYTESWAP_H -DHAVE_STRERROR -DHAVE_ISNAN  -DHAVE_PREAD_PWRITE=1 -DGS_RECURSIVE_MUTEXATTR=PTHREAD_MUTEX_RECURSIVE
 
 # Define the name of the executable file.
 
 GS=gs
 GS_SO_BASE=gs
 
-PCL=
-XPS=
-GPDL=
+PCL=no_gpcl6
+XPS=no_gxps
+GPDL=no_gpdl
 
 XE=
 XEAUX=
@@ -185,18 +185,19 @@ PCL_XPS_TARGETS=
 
 DEBUGDIRPREFIX=debug
 MEMENTODIRPREFIX=mem
+SANITIZEDIRPREFIX=san
 PGDIRPREFIX=pg
 
 # Define whether to compile in the FreeType library, and if so, where
 # the source tree is location. Otherwise, what library name to use
 # in linking to a shared implementation.
 
-FT_BRIDGE=0
+FT_BRIDGE=1
 SHARE_FT=1
 FTSRCDIR=src
 FT_CFLAGS=
-FT_LIBS= -lfreetype
-FT_CONFIG_SYSTEM_ZLIB=
+FT_LIBS=-lfreetype
+FT_CONFIG_SYSTEM_ZLIB=-DFT_CONFIG_OPTION_SYSTEM_ZLIB
 
 # Define whether to compile in UFST.
 # FAPI/UFST depends on UFST_BRIDGE being undefined - hence the construct below.
@@ -263,7 +264,7 @@ ZLIB_NAME=z
 JBIG2_LIB=jbig2dec
 SHARE_JBIG2=0
 JBIG2SRCDIR=./jbig2dec
-JBIG2_CFLAGS=-DHAVE_STDINT_H=1 -DWORDS_BIGENDIAN
+JBIG2_CFLAGS=-DHAVE_STDINT_H=1
 
 # uncomment the following three lines and one of the last two to
 # compile in the Luratech ldf_jb2 codec
@@ -280,7 +281,7 @@ JBIG2_CFLAGS=-DHAVE_STDINT_H=1 -DWORDS_BIGENDIAN
 JPX_LIB=openjpeg
 SHARE_JPX=0
 JPXSRCDIR=./openjpeg
-JPX_CFLAGS=  -DUSE_JPIP -DUSE_OPENJPEG_JP2 -DOPJ_HAVE_STDINT_H=1 -DOPJ_HAVE_INTTYPES_H=1 -DOPJ_BIG_ENDIAN -DOPJ_HAVE_FSEEKO=1
+JPX_CFLAGS=  -DUSE_JPIP -DUSE_OPENJPEG_JP2 -DOPJ_HAVE_STDINT_H=1 -DOPJ_HAVE_INTTYPES_H=1  -DOPJ_HAVE_FSEEKO=1
 
 # uncomment the following three lines and one of the last two to
 # compile in the Luratech lwf_jp2 codec
@@ -299,7 +300,7 @@ JPX_CFLAGS=  -DUSE_JPIP -DUSE_OPENJPEG_JP2 -DOPJ_HAVE_STDINT_H=1 -DOPJ_HAVE_INTT
 # options for lcms color management library
 SHARE_LCMS=1
 LCMS2SRCDIR=src
-LCMS2_CFLAGS=-DSHARE_LCMS=$(SHARE_LCMS) -DCMS_USE_BIG_ENDIAN=1   
+LCMS2_CFLAGS=-DSHARE_LCMS=$(SHARE_LCMS) -DCMS_USE_BIG_ENDIAN=0   
 
 # Which CMS are we using?
 # Options are currently lcms or lcms2
@@ -346,7 +347,7 @@ LCUPSI_NAME=cupsimage
 LCUPSISRCDIR=./cups
 CUPS_CC=$(CC)
 
-CUPSCFLAGS=-I/system/usr/root/include  -DNOCONTRIB -DUSE_LIBICONV_GNU -DSHARE_LCUPS=$(SHARE_LCUPS) -DSHARE_LCUPSI=$(SHARE_LCUPSI)
+CUPSCFLAGS=-I/system/usr/root/include  -DUSE_LIBICONV_GNU -DSHARE_LCUPS=$(SHARE_LCUPS) -DSHARE_LCUPSI=$(SHARE_LCUPSI)
 
 # Define how to build the library archives.  (These are not used in any
 # standard configuration.)
@@ -359,7 +360,7 @@ RANLIB=arm-linux-androideabi-ranlib
 
 # Define the name of the C compiler (target and host (AUX))
 
-CC=arm-linux-androideabi-gcc
+CC=arm-linux-androideabi-gcc -pie -fPIE
 CCAUX=arm-linux-androideabi-gcc
 
 # Define the name of the linker for the final link step.
@@ -369,7 +370,7 @@ CCLD=$(CC)
 CCAUXLD=$(CCAUX)
 
 # Define the default gcc flags.
-GCFLAGS=  -Wall -Wstrict-prototypes -Wundef -Wmissing-declarations -Wmissing-prototypes -Wwrite-strings -Wno-strict-aliasing -Werror=declaration-after-statement -fno-builtin -fno-common -Werror=return-type -DHAVE_STDINT_H=1 -DHAVE_DIRENT_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_SYS_TIMES_H=1 -DHAVE_INTTYPES_H=1 -DGX_COLOR_INDEX_TYPE="unsigned long long" -D__USE_UNIX98=1   -DNOCONTRIB -DUSE_LIBICONV_GNU
+GCFLAGS=  -Wall -Wstrict-prototypes -Wundef -Wmissing-declarations -Wmissing-prototypes -Wwrite-strings -Wno-strict-aliasing -Werror=declaration-after-statement -fno-builtin -fno-common -Werror=return-type -DHAVE_STDINT_H=1 -DHAVE_DIRENT_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_SYS_TIMES_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_LIBDL=1 -DGX_COLOR_INDEX_TYPE="unsigned long long" -D__USE_UNIX98=1   -DUSE_LIBICONV_GNU -pie -fPIE
 
 # Define the added flags for standard, debugging, profiling 
 # and shared object builds.
@@ -378,6 +379,11 @@ CFLAGS_STANDARD= -O2
 CFLAGS_DEBUG= -gdwarf-2 -g3 -O0
 CFLAGS_PROFILE=-pg  -O2
 CFLAGS_SO=-fPIC
+
+# Define the extra flags added for address sanitizer builds
+
+CFLAGS_SANITIZE=-fsanitize=address -fno-omit-frame-pointer
+LDFLAGS_SANITIZE=$(CFLAGS_SANITIZE)
 
 # Define the other compilation flags.  Add at most one of the following:
 #	-DBSD4_2 for 4.2bsd systems.
@@ -402,7 +408,7 @@ DBUS_CFLAGS=
 DBUS_LIBS=
 
 # defines from autoconf; note that we don't use all of these at present.
-ACDEFS=-DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DHAVE_DIRENT_H=1 -DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STRINGS_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DHAVE_ERRNO_H=1 -DHAVE_FCNTL_H=1 -DHAVE_LIMITS_H=1 -DHAVE_MALLOC_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_STRINGS_H=1 -DHAVE_SYS_IOCTL_H=1 -DHAVE_SYS_PARAM_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_SYS_TIMES_H=1 -DHAVE_SYSLOG_H=1 -DHAVE_UNISTD_H=1 -DHAVE_DIRENT_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STRUCT_STAT_ST_BLOCKS=1 -DHAVE_ST_BLOCKS=1 -DTIME_WITH_SYS_TIME=1 -DSIZEOF_UNSIGNED_LONG_INT=4 -DSIZEOF_UNSIGNED_LONG_LONG=8 -DHAVE_LIBM=1 -DHAVE_PREAD=1 -DHAVE_PWRITE=1 -DHAVE_DECL_PWRITE=1 -DHAVE_DECL_PREAD=1 -DUSE_LIBICONV_GNU=1 -DHAVE_LIBDL=1 -DHAVE_JPEGLIB_H=1 -DDONT_HAVE_JMEMSYS_H=1 -DHAVE_ZLIB_H=1 -DHAVE_PNG_H=1 -DHAVE_LCMS2_H=1 -DHAVE_TIFF_H=1 -DHAVE_IJS_IJS_H=1 -DHAVE_FSEEKO=1 -DHAVE_MEMALIGN=1 -DX_DISPLAY_MISSING=1 -DHAVE_MKSTEMP=1 -DHAVE_FSEEKO=1 -DHAVE_SETLOCALE=1 -DHAVE_STRERROR=1 -DHAVE_FORK=1 -DHAVE_VFORK=1 -DHAVE_WORKING_VFORK=1 -DHAVE_WORKING_FORK=1 -DHAVE_STDLIB_H=1 -DHAVE_MALLOC=0 -Dmalloc=rpl_malloc -DRETSIGTYPE=void -DHAVE_STAT_EMPTY_STRING_BUG=1 -DHAVE_VPRINTF=1 -DHAVE_BZERO=1 -DHAVE_DUP2=1 -DHAVE_FLOOR=1 -DHAVE_GETTIMEOFDAY=1 -DHAVE_MEMCHR=1 -DHAVE_MEMMOVE=1 -DHAVE_MEMSET=1 -DHAVE_MKDIR=1 -DHAVE_MODF=1 -DHAVE_POW=1 -DHAVE_PUTENV=1 -DHAVE_RINT=1 -DHAVE_SETENV=1 -DHAVE_SQRT=1 -DHAVE_STRCHR=1 -DHAVE_STRRCHR=1 -DHAVE_STRSPN=1 -DHAVE_STRSTR=1 -DHAVE_STRNLEN=1
+ACDEFS=-DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STRINGS_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DHAVE_DIRENT_H=1 -DSTDC_HEADERS=1 -DHAVE_ERRNO_H=1 -DHAVE_FCNTL_H=1 -DHAVE_LIMITS_H=1 -DHAVE_MALLOC_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_STRINGS_H=1 -DHAVE_SYS_IOCTL_H=1 -DHAVE_SYS_PARAM_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_SYS_TIMES_H=1 -DHAVE_SYSLOG_H=1 -DHAVE_UNISTD_H=1 -DHAVE_DIRENT_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STRUCT_STAT_ST_BLOCKS=1 -DHAVE_ST_BLOCKS=1 -DTIME_WITH_SYS_TIME=1 -DSIZEOF_UNSIGNED_LONG_LONG=8 -DHAVE_LIBM=1 -DHAVE_PREAD=1 -DHAVE_PWRITE=1 -DHAVE_DECL_PWRITE=1 -DHAVE_DECL_PREAD=1 -DUSE_LIBICONV_GNU=1 -DHAVE_JPEGLIB_H=1 -DDONT_HAVE_JMEMSYS_H=1 -DHAVE_ZLIB_H=1 -DHAVE_PNG_H=1 -DHAVE_LCMS2_H=1 -DHAVE_TIFF_H=1 -DHAVE_IJS_IJS_H=1 -DHAVE_FSEEKO=1 -DHAVE_MEMALIGN=1 -DX_DISPLAY_MISSING=1 -DHAVE_MKSTEMP=1 -DHAVE_FSEEKO=1 -DHAVE_SETLOCALE=1 -DHAVE_STRERROR=1 -DHAVE_ISNAN=1 -DHAVE_FORK=1 -DHAVE_VFORK=1 -DHAVE_WORKING_VFORK=1 -DHAVE_WORKING_FORK=1 -DHAVE_STDLIB_H=1 -DHAVE_MALLOC=0 -Dmalloc=rpl_malloc -DRETSIGTYPE=void -DHAVE_STAT_EMPTY_STRING_BUG=1 -DHAVE_VPRINTF=1 -DHAVE_BZERO=1 -DHAVE_DUP2=1 -DHAVE_FLOOR=1 -DHAVE_GETTIMEOFDAY=1 -DHAVE_MEMCHR=1 -DHAVE_MEMMOVE=1 -DHAVE_MEMSET=1 -DHAVE_MKDIR=1 -DHAVE_MODF=1 -DHAVE_POW=1 -DHAVE_PUTENV=1 -DHAVE_RINT=1 -DHAVE_SETENV=1 -DHAVE_SQRT=1 -DHAVE_STRCHR=1 -DHAVE_STRRCHR=1 -DHAVE_STRSPN=1 -DHAVE_STRSTR=1 -DHAVE_STRNLEN=1
 
 CFLAGS=$(CFLAGS_STANDARD) $(GCFLAGS) $(AC_CFLAGS) $(XCFLAGS)
 
@@ -427,8 +433,8 @@ LDFLAGS_SO=-shared -Wl,$(LD_SET_DT_SONAME)$(LDFLAGS_SO_PREFIX)$(GS_SONAME_MAJOR)
 # Solaris may need -lnsl -lsocket -lposix4.
 # (Libraries required by individual drivers are handled automatically.)
 
-EXTRALIBS=$(XTRALIBS) -ldl -lm  -liconv -rdynamic -ldl -lfontconfig 
-AUXEXTRALIBS=$(XTRALIBS) -ldl -lm  -liconv -rdynamic -ldl -lfontconfig  -l$(ZLIB_NAME)
+EXTRALIBS=$(XTRALIBS) -lm -ldl  -liconv -rdynamic -lfontconfig -lfreetype 
+AUXEXTRALIBS=$(XTRALIBS) -lm -ldl  -liconv -rdynamic -lfontconfig -lfreetype  -l$(ZLIB_NAME)
 
 # Define the standard libraries to search at the end of linking.
 # Most platforms require -lpthread for the POSIX threads library;
@@ -508,7 +514,7 @@ XPS_FEATURE_DEVS=$(XPSOBJDIR)/pl.dev $(XPSOBJDIR)/xps.dev
 
 FEATURE_DEVS=$(GLD)pipe.dev $(GLD)gsnogc.dev $(GLD)htxlib.dev $(GLD)psl3lib.dev $(GLD)psl2lib.dev \
              $(GLD)dps2lib.dev $(GLD)path1lib.dev $(GLD)patlib.dev $(GLD)psl2cs.dev $(GLD)rld.dev $(GLD)gxfapiu$(UFST_BRIDGE).dev\
-             $(GLD)ttflib.dev  $(GLD)cielib.dev $(GLD)pipe.dev $(GLD)htxlib.dev $(GLD)sdctd.dev $(GLD)libpng.dev\
+             $(GLD)ttflib.dev  $(GLD)cielib.dev $(GLD)pipe.dev $(GLD)htxlib.dev $(GLD)sdct.dev $(GLD)libpng.dev\
 	     $(GLD)seprlib.dev $(GLD)translib.dev $(GLD)cidlib.dev $(GLD)psf0lib.dev $(GLD)psf1lib.dev\
              $(GLD)psf2lib.dev $(GLD)lzwd.dev $(GLD)sicclib.dev \
              $(GLD)sjbig2.dev $(GLD)sjpx.dev $(GLD)ramfs.dev
@@ -585,12 +591,12 @@ DISPLAY_DEV=$(DD)bbox.dev
 #DEVICE_DEVS20=$(DD)cljet5.dev $(DD)cljet5c.dev
 #DEVICE_DEVS21=$(DD)spotcmyk.dev $(DD)devicen.dev $(DD)xcf.dev $(DD)psdcmyk.dev $(DD)psdrgb.dev $(DD)psdcmykog.dev $(DD)fpng.dev
 DEVICE_DEVS=$(DISPLAY_DEV) 
-DEVICE_DEVS1=$(DD)bit.dev $(DD)bitcmyk.dev $(DD)bitrgb.dev $(DD)bitrgbtags.dev $(DD)bmp16.dev $(DD)bmp16m.dev $(DD)bmp256.dev $(DD)bmp32b.dev $(DD)bmpgray.dev $(DD)bmpmono.dev $(DD)bmpsep1.dev $(DD)bmpsep8.dev $(DD)ccr.dev $(DD)cfax.dev $(DD)cif.dev $(DD)devicen.dev $(DD)dfaxhigh.dev $(DD)dfaxlow.dev $(DD)eps2write.dev $(DD)fax.dev $(DD)faxg3.dev $(DD)faxg32d.dev $(DD)faxg4.dev $(DD)fpng.dev $(DD)gprf.dev $(DD)inferno.dev $(DD)ink_cov.dev $(DD)inkcov.dev $(DD)jpeg.dev $(DD)jpegcmyk.dev $(DD)jpeggray.dev $(DD)mgr4.dev $(DD)mgr8.dev $(DD)mgrgray2.dev $(DD)mgrgray4.dev $(DD)mgrgray8.dev $(DD)mgrmono.dev $(DD)miff24.dev $(DD)pam.dev $(DD)pamcmyk32.dev $(DD)pamcmyk4.dev $(DD)pbm.dev $(DD)pbmraw.dev $(DD)pcx16.dev $(DD)pcx24b.dev $(DD)pcx256.dev $(DD)pcx2up.dev $(DD)pcxcmyk.dev $(DD)pcxgray.dev $(DD)pcxmono.dev $(DD)pdfwrite.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev $(DD)pkm.dev $(DD)pkmraw.dev $(DD)pksm.dev $(DD)pksmraw.dev $(DD)plan.dev $(DD)plan9bm.dev $(DD)planc.dev $(DD)plang.dev $(DD)plank.dev $(DD)planm.dev $(DD)plib.dev $(DD)plibc.dev $(DD)plibg.dev $(DD)plibk.dev $(DD)plibm.dev $(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)ps2write.dev $(DD)psdcmyk.dev $(DD)psdcmykog.dev $(DD)psdf.dev $(DD)psdrgb.dev $(DD)sgirgb.dev $(DD)spotcmyk.dev $(DD)sunhmono.dev $(DD)tfax.dev $(DD)tiff12nc.dev $(DD)tiff24nc.dev $(DD)tiff32nc.dev $(DD)tiff48nc.dev $(DD)tiff64nc.dev $(DD)tiffcrle.dev $(DD)tiffg3.dev $(DD)tiffg32d.dev $(DD)tiffg4.dev $(DD)tiffgray.dev $(DD)tifflzw.dev $(DD)tiffpack.dev $(DD)tiffs.dev $(DD)tiffscaled.dev $(DD)tiffscaled24.dev $(DD)tiffscaled32.dev $(DD)tiffscaled4.dev $(DD)tiffscaled8.dev $(DD)tiffsep.dev $(DD)tiffsep1.dev $(DD)txtwrite.dev $(DD)xcf.dev $(DD)xpswrite.dev 
-DEVICE_DEVS2=$(DD)ap3250.dev $(DD)appledmp.dev $(DD)atx23.dev $(DD)atx24.dev $(DD)atx38.dev $(DD)bj10e.dev $(DD)bj200.dev $(DD)bjc600.dev $(DD)bjc800.dev $(DD)cdeskjet.dev $(DD)cdj500.dev $(DD)cdj550.dev $(DD)cdjcolor.dev $(DD)cdjmono.dev $(DD)cljet5.dev $(DD)cljet5c.dev $(DD)cljet5pr.dev $(DD)coslw2p.dev $(DD)coslwxl.dev $(DD)cp50.dev $(DD)declj250.dev $(DD)deskjet.dev $(DD)dj505j.dev $(DD)djet500.dev $(DD)djet500c.dev $(DD)dnj650c.dev $(DD)eps9high.dev $(DD)eps9mid.dev $(DD)epson.dev $(DD)epsonc.dev $(DD)escp.dev $(DD)fs600.dev $(DD)hl7x0.dev $(DD)ibmpro.dev $(DD)imagen.dev $(DD)itk24i.dev $(DD)itk38.dev $(DD)iwhi.dev $(DD)iwlo.dev $(DD)iwlq.dev $(DD)jetp3852.dev $(DD)laserjet.dev $(DD)lbp8.dev $(DD)lips3.dev $(DD)lj250.dev $(DD)lj3100sw.dev $(DD)lj4dith.dev $(DD)lj4dithp.dev $(DD)lj5gray.dev $(DD)lj5mono.dev $(DD)ljet2p.dev $(DD)ljet3.dev $(DD)ljet3d.dev $(DD)ljet4.dev $(DD)ljet4d.dev $(DD)ljet4pjl.dev $(DD)ljetplus.dev $(DD)lp2563.dev $(DD)lp8000.dev $(DD)lq850.dev $(DD)lxm5700m.dev $(DD)m8510.dev $(DD)necp6.dev $(DD)oce9050.dev $(DD)oki182.dev $(DD)okiibm.dev $(DD)paintjet.dev $(DD)photoex.dev $(DD)picty180.dev $(DD)pj.dev $(DD)pjetxl.dev $(DD)pjxl.dev $(DD)pjxl300.dev $(DD)pxlcolor.dev $(DD)pxlmono.dev $(DD)r4081.dev $(DD)rinkj.dev $(DD)sj48.dev $(DD)st800.dev $(DD)stcolor.dev $(DD)t4693d2.dev $(DD)t4693d4.dev $(DD)t4693d8.dev $(DD)tek4696.dev $(DD)uniprint.dev 
+DEVICE_DEVS1=$(DD)bbox.dev $(DD)bit.dev $(DD)bitcmyk.dev $(DD)bitrgb.dev $(DD)bitrgbtags.dev $(DD)bmp16.dev $(DD)bmp16m.dev $(DD)bmp256.dev $(DD)bmp32b.dev $(DD)bmpgray.dev $(DD)bmpmono.dev $(DD)bmpsep1.dev $(DD)bmpsep8.dev $(DD)ccr.dev $(DD)cfax.dev $(DD)cif.dev $(DD)devicen.dev $(DD)dfaxhigh.dev $(DD)dfaxlow.dev $(DD)eps2write.dev $(DD)fax.dev $(DD)faxg3.dev $(DD)faxg32d.dev $(DD)faxg4.dev $(DD)fpng.dev $(DD)gprf.dev $(DD)inferno.dev $(DD)ink_cov.dev $(DD)inkcov.dev $(DD)jpeg.dev $(DD)jpegcmyk.dev $(DD)jpeggray.dev $(DD)mag16.dev $(DD)mag256.dev $(DD)mgr4.dev $(DD)mgr8.dev $(DD)mgrgray2.dev $(DD)mgrgray4.dev $(DD)mgrgray8.dev $(DD)mgrmono.dev $(DD)miff24.dev $(DD)pam.dev $(DD)pamcmyk32.dev $(DD)pamcmyk4.dev $(DD)pbm.dev $(DD)pbmraw.dev $(DD)pcx16.dev $(DD)pcx24b.dev $(DD)pcx256.dev $(DD)pcxcmyk.dev $(DD)pcxgray.dev $(DD)pcxmono.dev $(DD)pdfwrite.dev $(DD)pgm.dev $(DD)pgmraw.dev $(DD)pgnm.dev $(DD)pgnmraw.dev $(DD)pkm.dev $(DD)pkmraw.dev $(DD)pksm.dev $(DD)pksmraw.dev $(DD)plan.dev $(DD)plan9bm.dev $(DD)planc.dev $(DD)plang.dev $(DD)plank.dev $(DD)planm.dev $(DD)plib.dev $(DD)plibc.dev $(DD)plibg.dev $(DD)plibk.dev $(DD)plibm.dev $(DD)pnm.dev $(DD)pnmraw.dev $(DD)ppm.dev $(DD)ppmraw.dev $(DD)ps2write.dev $(DD)psdcmyk.dev $(DD)psdcmykog.dev $(DD)psdf.dev $(DD)psdrgb.dev $(DD)sgirgb.dev $(DD)spotcmyk.dev $(DD)sunhmono.dev $(DD)tfax.dev $(DD)tiff12nc.dev $(DD)tiff24nc.dev $(DD)tiff32nc.dev $(DD)tiff48nc.dev $(DD)tiff64nc.dev $(DD)tiffcrle.dev $(DD)tiffg3.dev $(DD)tiffg32d.dev $(DD)tiffg4.dev $(DD)tiffgray.dev $(DD)tifflzw.dev $(DD)tiffpack.dev $(DD)tiffs.dev $(DD)tiffscaled.dev $(DD)tiffscaled24.dev $(DD)tiffscaled32.dev $(DD)tiffscaled4.dev $(DD)tiffscaled8.dev $(DD)tiffsep.dev $(DD)tiffsep1.dev $(DD)txtwrite.dev $(DD)xcf.dev $(DD)xpswrite.dev 
+DEVICE_DEVS2=$(DD)alc1900.dev $(DD)alc2000.dev $(DD)alc4000.dev $(DD)alc4100.dev $(DD)alc8500.dev $(DD)alc8600.dev $(DD)alc9100.dev $(DD)ap3250.dev $(DD)appledmp.dev $(DD)atx23.dev $(DD)atx24.dev $(DD)atx38.dev $(DD)bj10e.dev $(DD)bj10v.dev $(DD)bj10vh.dev $(DD)bj200.dev $(DD)bjc600.dev $(DD)bjc800.dev $(DD)bjc880j.dev $(DD)bjccmyk.dev $(DD)bjccolor.dev $(DD)bjcgray.dev $(DD)bjcmono.dev $(DD)cdeskjet.dev $(DD)cdj1600.dev $(DD)cdj500.dev $(DD)cdj550.dev $(DD)cdj670.dev $(DD)cdj850.dev $(DD)cdj880.dev $(DD)cdj890.dev $(DD)cdj970.dev $(DD)cdjcolor.dev $(DD)cdjmono.dev $(DD)cdnj500.dev $(DD)chp2200.dev $(DD)cljet5.dev $(DD)cljet5c.dev $(DD)cljet5pr.dev $(DD)coslw2p.dev $(DD)coslwxl.dev $(DD)cp50.dev $(DD)declj250.dev $(DD)deskjet.dev $(DD)dj505j.dev $(DD)djet500.dev $(DD)djet500c.dev $(DD)dl2100.dev $(DD)dnj650c.dev $(DD)epl2050.dev $(DD)epl2050p.dev $(DD)epl2120.dev $(DD)epl2500.dev $(DD)epl2750.dev $(DD)epl5800.dev $(DD)epl5900.dev $(DD)epl6100.dev $(DD)epl6200.dev $(DD)eplcolor.dev $(DD)eplmono.dev $(DD)eps9high.dev $(DD)eps9mid.dev $(DD)epson.dev $(DD)epsonc.dev $(DD)escp.dev $(DD)escpage.dev $(DD)fmlbp.dev $(DD)fmpr.dev $(DD)fs600.dev $(DD)gdi.dev $(DD)hl1240.dev $(DD)hl1250.dev $(DD)hl7x0.dev $(DD)hpdj1120c.dev $(DD)hpdj310.dev $(DD)hpdj320.dev $(DD)hpdj340.dev $(DD)hpdj400.dev $(DD)hpdj500.dev $(DD)hpdj500c.dev $(DD)hpdj510.dev $(DD)hpdj520.dev $(DD)hpdj540.dev $(DD)hpdj550c.dev $(DD)hpdj560c.dev $(DD)hpdj600.dev $(DD)hpdj660c.dev $(DD)hpdj670c.dev $(DD)hpdj680c.dev $(DD)hpdj690c.dev $(DD)hpdj850c.dev $(DD)hpdj855c.dev $(DD)hpdj870c.dev $(DD)hpdj890c.dev $(DD)hpdjplus.dev $(DD)hpdjportable.dev $(DD)ibmpro.dev $(DD)imagen.dev $(DD)itk24i.dev $(DD)itk38.dev $(DD)iwhi.dev $(DD)iwlo.dev $(DD)iwlq.dev $(DD)jetp3852.dev $(DD)jj100.dev $(DD)la50.dev $(DD)la70.dev $(DD)la75.dev $(DD)la75plus.dev $(DD)laserjet.dev $(DD)lbp310.dev $(DD)lbp320.dev $(DD)lbp8.dev $(DD)lex2050.dev $(DD)lex3200.dev $(DD)lex5700.dev $(DD)lex7000.dev $(DD)lips2p.dev $(DD)lips3.dev $(DD)lips4.dev $(DD)lips4v.dev $(DD)lj250.dev $(DD)lj3100sw.dev $(DD)lj4dith.dev $(DD)lj4dithp.dev $(DD)lj5gray.dev $(DD)lj5mono.dev $(DD)ljet2p.dev $(DD)ljet3.dev $(DD)ljet3d.dev $(DD)ljet4.dev $(DD)ljet4d.dev $(DD)ljet4pjl.dev $(DD)ljetplus.dev $(DD)ln03.dev $(DD)lp1800.dev $(DD)lp1900.dev $(DD)lp2000.dev $(DD)lp2200.dev $(DD)lp2400.dev $(DD)lp2500.dev $(DD)lp2563.dev $(DD)lp3000c.dev $(DD)lp7500.dev $(DD)lp7700.dev $(DD)lp7900.dev $(DD)lp8000.dev $(DD)lp8000c.dev $(DD)lp8100.dev $(DD)lp8200c.dev $(DD)lp8300c.dev $(DD)lp8300f.dev $(DD)lp8400f.dev $(DD)lp8500c.dev $(DD)lp8600.dev $(DD)lp8600f.dev $(DD)lp8700.dev $(DD)lp8800c.dev $(DD)lp8900.dev $(DD)lp9000b.dev $(DD)lp9000c.dev $(DD)lp9100.dev $(DD)lp9200b.dev $(DD)lp9200c.dev $(DD)lp9300.dev $(DD)lp9400.dev $(DD)lp9500c.dev $(DD)lp9600.dev $(DD)lp9600s.dev $(DD)lp9800c.dev $(DD)lps4500.dev $(DD)lps6500.dev $(DD)lq850.dev $(DD)lxm3200.dev $(DD)lxm5700m.dev $(DD)m8510.dev $(DD)md1xMono.dev $(DD)md2k.dev $(DD)md50Eco.dev $(DD)md50Mono.dev $(DD)md5k.dev $(DD)mj500c.dev $(DD)mj6000c.dev $(DD)mj700v2c.dev $(DD)mj8000c.dev $(DD)ml600.dev $(DD)necp6.dev $(DD)npdl.dev $(DD)oce9050.dev $(DD)oki182.dev $(DD)oki4w.dev $(DD)okiibm.dev $(DD)oprp.dev $(DD)opvp.dev $(DD)paintjet.dev $(DD)pcl3.dev $(DD)photoex.dev $(DD)picty180.dev $(DD)pj.dev $(DD)pjetxl.dev $(DD)pjxl.dev $(DD)pjxl300.dev $(DD)pr1000.dev $(DD)pr1000_4.dev $(DD)pr150.dev $(DD)pr201.dev $(DD)pxlcolor.dev $(DD)pxlmono.dev $(DD)r4081.dev $(DD)rinkj.dev $(DD)rpdl.dev $(DD)samsunggdi.dev $(DD)sj48.dev $(DD)st800.dev $(DD)stcolor.dev $(DD)t4693d2.dev $(DD)t4693d4.dev $(DD)t4693d8.dev $(DD)tek4696.dev $(DD)uniprint.dev $(DD)xes.dev 
 DEVICE_DEVS3=$(DD)cups.dev $(DD)pwgraster.dev 
 DEVICE_DEVS4=$(DD)ijs.dev 
 DEVICE_DEVS5=
-DEVICE_DEVS6=$(DD)png16.dev $(DD)png16m.dev $(DD)png256.dev $(DD)png48.dev $(DD)pngalpha.dev $(DD)pnggray.dev $(DD)pngmono.dev 
+DEVICE_DEVS6=$(DD)png16.dev $(DD)png16m.dev $(DD)png256.dev $(DD)png48.dev $(DD)pngalpha.dev $(DD)pnggray.dev $(DD)pngmono.dev $(DD)pngmonod.dev 
 DEVICE_DEVS7=
 DEVICE_DEVS8=
 DEVICE_DEVS9=
@@ -652,7 +658,7 @@ MAKEDIRSTOP=
 
 # ---------------- End of platform-specific section ---------------- #
 
-INSTALL_CONTRIB=
+INSTALL_CONTRIB=install-contrib-extras
 include $(GLSRCDIR)/unixhead.mak
 include $(GLSRCDIR)/gs.mak
 # *romfs.mak must precede lib.mak
@@ -698,7 +704,7 @@ include $(GLSRCDIR)/unixlink.mak
 include $(GLSRCDIR)/unix-dll.mak
 include $(GLSRCDIR)/unix-end.mak
 include $(GLSRCDIR)/unixinst.mak
-
+include ./contrib/contrib.mak
 include ./cups/cups.mak
 
 # Clean up after the autotools scripts

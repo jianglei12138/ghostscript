@@ -271,7 +271,7 @@ setup_image_compression(psdf_binary_writer *pbw, const psdf_image_params *pdip,
         }
         dict = pdip->ACSDict;
     } else if (!lossless)
-        return gs_error_rangecheck; /* Reject the alternative stream. */
+      return_error(gs_error_rangecheck); /* Reject the alternative stream. */
     if (pdev->version < psdf_version_ll3 && templat == &s_zlibE_template)
         templat = lossless_template;
     if (dict != NULL) /* Some interpreters don't supply filter parameters. */
@@ -425,34 +425,44 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
     stream_state *st;
     int code;
 
-    switch (pdip->DownsampleType) {
-        case ds_Subsample:
-            templat = &s_Subsample_template;
-            break;
-        case ds_Average:
-            templat = &s_Average_template;
-            break;
-        case ds_Bicubic:
-            templat = &s_IScale_template;
-            /* We now use the Mitchell filter instead of the 'bicubic' filter
-             * because it gives better results.
-            templat = &s_Bicubic_template;
-             */
-            break;
-        default:
-            dmprintf1(pdev->v_memory, "Unsupported downsample type %d\n", pdip->DownsampleType);
-            return gs_note_error(gs_error_rangecheck);
-    }
+    /* We can't apply anything other than a simple downsample to monochrome
+     * image without turning them into greyscale images. We set the default
+     * to subsample above, so just ignore it if the current image is monochtome.
+     */
+    if (pim->BitsPerComponent > 1) {
+        switch (pdip->DownsampleType) {
+            case ds_Subsample:
+                templat = &s_Subsample_template;
+                break;
+            case ds_Average:
+                templat = &s_Average_template;
+                break;
+            case ds_Bicubic:
+                templat = &s_IScale_template;
+                /* We now use the Mitchell filter instead of the 'bicubic' filter
+                 * because it gives better results.
+                templat = &s_Bicubic_template;
+                 */
+                break;
+            default:
+                dmprintf1(pdev->v_memory, "Unsupported downsample type %d\n", pdip->DownsampleType);
+                return gs_note_error(gs_error_rangecheck);
+        }
 
-    if (pdip->DownsampleType != ds_Bicubic) {
-        /* If downsample type is not bicubic, ensure downsample factor is
-         * an integer if we're close to one (< 0.1) or silently switch to
-         * bicubic transform otherwise. See bug #693917. */
-        float rfactor = floor(factor + 0.5);
-        if (fabs(rfactor-factor) < 0.1)
-            factor = rfactor;  /* round factor to nearest integer */
-        else
-            templat = &s_Bicubic_template;  /* switch to bicubic */
+        if (pdip->DownsampleType != ds_Bicubic) {
+            /* If downsample type is not bicubic, ensure downsample factor is
+             * an integer if we're close to one (< 0.1) or silently switch to
+             * bicubic transform otherwise. See bug #693917. */
+            float rfactor = floor(factor + 0.5);
+            if (fabs(rfactor-factor) < 0.1)
+                factor = rfactor;  /* round factor to nearest integer */
+            else
+                templat = &s_Bicubic_template;  /* switch to bicubic */
+        }
+    } else {
+        if (pdip->DownsampleType != ds_Subsample) {
+            dmprintf(pdev->memory, "The only Downsample filter for monochrome images is Subsample, ignoring request.\n");
+        }
     }
 
     st = s_alloc_state(pdev->v_memory, templat->stype,
@@ -475,8 +485,14 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
         ss->AntiAlias = pdip->AntiAlias;
         ss->padX = ss->padY = false; /* should be true */
 
-        if (templat->init)
-            templat->init(st);
+        if (templat->init) {
+            code = templat->init(st);
+            if (code < 0) {
+                dmprintf(st->memory, "Failed to initialise downsample filter, downsampling aborted\n");
+                gs_free_object(pdev->v_memory, st, "setup_image_compression");
+                return 0;
+            }
+        }
         pim->BitsPerComponent = pdip->Depth;
         pim->Width = s_Downsample_size_out(pim->Width, factor, false);
         pim->Height = s_Downsample_size_out(pim->Height, factor, false);
@@ -514,8 +530,14 @@ setup_downsampling(psdf_binary_writer * pbw, const psdf_image_params * pdip,
         ss->params.early_cm = true;
         ss->params.MaxValueIn = ss->params.MaxValueOut = (int)pow(2, pdip->Depth);;
 
-        if (templat->init)
-            templat->init(st);
+        if (templat->init) {
+            code = templat->init(st);
+            if (code < 0) {
+                dmprintf(st->memory, "Failed to initialise downsample filter, downsampling aborted\n");
+                gs_free_object(pdev->v_memory, st, "setup_image_compression");
+                return 0;
+            }
+        }
         pim->Width = s_Downsample_size_out(pim->Width, factor, false);
         pim->Height = s_Downsample_size_out(pim->Height, factor, false);
         pim->BitsPerComponent = pdip->Depth;

@@ -92,20 +92,20 @@ tiff_get_some_params(gx_device * dev, gs_param_list * plist, int which)
     if ((code = param_write_bool(plist, "UseBigTIFF", &tfdev->UseBigTIFF)) < 0)
         ecode = code;
 #endif
+    if ((code = param_write_bool(plist, "TIFFDateTime", &tfdev->write_datetime)) < 0)
+        ecode = code;
     if ((code = tiff_compression_param_string(&comprstr, tfdev->Compression)) < 0 ||
         (code = param_write_string(plist, "Compression", &comprstr)) < 0)
         ecode = code;
-    if (which & 1)
-    {
-      if ((code = param_write_long(plist, "DownScaleFactor", &tfdev->DownScaleFactor)) < 0)
-          ecode = code;
-    }
     if ((code = param_write_long(plist, "MaxStripSize", &tfdev->MaxStripSize)) < 0)
         ecode = code;
     if ((code = param_write_long(plist, "AdjustWidth", &tfdev->AdjustWidth)) < 0)
         ecode = code;
-    if ((code = param_write_long(plist, "MinFeatureSize", &tfdev->MinFeatureSize)) < 0)
-        ecode = code;
+    if (which & 1) {
+        if ((code = gx_downscaler_write_params(plist, &tfdev->downscale,
+                                               GX_DOWNSCALER_PARAMS_MFS | (which & 2 ? GX_DOWNSCALER_PARAMS_TRAP : 0))) < 0)
+            ecode = code;
+    }
     return ecode;
 }
 
@@ -121,6 +121,12 @@ tiff_get_params_downscale(gx_device * dev, gs_param_list * plist)
     return tiff_get_some_params(dev, plist, 1);
 }
 
+int
+tiff_get_params_downscale_cmyk(gx_device * dev, gs_param_list * plist)
+{
+    return tiff_get_some_params(dev, plist, 3);
+}
+
 static int
 tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
 {
@@ -130,12 +136,11 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
     const char *param_name;
     bool big_endian = tfdev->BigEndian;
     bool usebigtiff = tfdev->UseBigTIFF;
+    bool write_datetime = tfdev->write_datetime;
     uint16 compr = tfdev->Compression;
     gs_param_string comprstr;
-    long downscale = tfdev->DownScaleFactor;
     long mss = tfdev->MaxStripSize;
     long aw = tfdev->AdjustWidth;
-    long mfs = tfdev->MinFeatureSize;
 
     /* Read BigEndian option as bool */
     switch (code = param_read_bool(plist, (param_name = "BigEndian"), &big_endian)) {
@@ -163,6 +168,15 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
     usebigtiff = false;
 #endif
 
+    switch (code = param_read_bool(plist, (param_name = "TIFFDateTime"), &write_datetime)) {
+        default:
+            ecode = code;
+            param_signal_error(plist, param_name, ecode);
+        case 0:
+        case 1:
+            break;
+    }
+
     /* Read Compression */
     switch (code = param_read_string(plist, (param_name = "Compression"), &comprstr)) {
         case 0:
@@ -177,7 +191,7 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
 
                 errprintf(tfdev->memory, "Invalid compression setting for this bitdepth\n");
                 param_signal_error(plist, param_name, gs_error_rangecheck);
-                return gs_error_rangecheck;
+                return_error(gs_error_rangecheck);
             }
             break;
         case 1:
@@ -186,20 +200,15 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
             ecode = code;
             param_signal_error(plist, param_name, ecode);
     }
-    /* Read Downscale factor */
-    if (which & 1) {
-        switch (code = param_read_long(plist,
-                                       (param_name = "DownScaleFactor"),
-                                       &downscale)) {
-            case 0:
-                if (downscale <= 0)
-                    downscale = 1;
-                break;
-            case 1:
-                break;
-            default:
-                ecode = code;
-                param_signal_error(plist, param_name, ecode);
+    if (which & 1)
+    {
+        code = gx_downscaler_read_params(plist, &tfdev->downscale,
+                                         (GX_DOWNSCALER_PARAMS_MFS |
+                                          (which & 2 ? GX_DOWNSCALER_PARAMS_TRAP : 0)));
+        if (code < 0)
+        {
+            ecode = code;
+            param_signal_error(plist, param_name, ecode);
         }
     }
     switch (code = param_read_long(plist, (param_name = "MaxStripSize"), &mss)) {
@@ -229,17 +238,6 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
         case 1:
             break;
     }
-    switch (code = param_read_long(plist, (param_name = "MinFeatureSize"), &mfs)) {
-        case 0:
-            if ((mfs >= 0) && (mfs <= 4))
-                break;
-            code = gs_error_rangecheck;
-        default:
-            ecode = code;
-            param_signal_error(plist, param_name, ecode);
-        case 1:
-            break;
-    }
 
     if (ecode < 0)
         return ecode;
@@ -249,11 +247,10 @@ tiff_put_some_params(gx_device * dev, gs_param_list * plist, int which)
 
     tfdev->BigEndian = big_endian;
     tfdev->UseBigTIFF = usebigtiff;
+    tfdev->write_datetime = write_datetime;
     tfdev->Compression = compr;
     tfdev->MaxStripSize = mss;
-    tfdev->DownScaleFactor = downscale;
     tfdev->AdjustWidth = aw;
-    tfdev->MinFeatureSize = mfs;
     return code;
 }
 
@@ -269,6 +266,12 @@ tiff_put_params_downscale(gx_device * dev, gs_param_list * plist)
     return tiff_put_some_params(dev, plist, 1);
 }
 
+int
+tiff_put_params_downscale_cmyk(gx_device * dev, gs_param_list * plist)
+{
+    return tiff_put_some_params(dev, plist, 3);
+}
+
 int gdev_tiff_begin_page(gx_device_tiff *tfdev,
                          FILE *file)
 {
@@ -281,8 +284,9 @@ int gdev_tiff_begin_page(gx_device_tiff *tfdev,
             return_error(gs_error_invalidfileaccess);
     }
 
-    return tiff_set_fields_for_printer(pdev, tfdev->tif, tfdev->DownScaleFactor,
-                                       tfdev->AdjustWidth);
+    return tiff_set_fields_for_printer(pdev, tfdev->tif, tfdev->downscale.downscale_factor,
+                                       tfdev->AdjustWidth,
+                                       tfdev->write_datetime);
 }
 
 int tiff_set_compression(gx_device_printer *pdev,
@@ -309,12 +313,13 @@ int tiff_set_compression(gx_device_printer *pdev,
 int tiff_set_fields_for_printer(gx_device_printer *pdev,
                                 TIFF              *tif,
                                 int                factor,
-                                int                adjustWidth)
+                                int                adjustWidth,
+                                bool               writedatetime)
 {
     int width = gx_downscaler_scale(pdev->width, factor);
     int height = gx_downscaler_scale(pdev->height, factor);
-    int xpi = gx_downscaler_scale(pdev->x_pixels_per_inch, factor);
-    int ypi = gx_downscaler_scale(pdev->y_pixels_per_inch, factor);
+    int xpi = gx_downscaler_scale((int)pdev->x_pixels_per_inch, factor);
+    int ypi = gx_downscaler_scale((int)pdev->y_pixels_per_inch, factor);
     width = fax_adjusted_width(width, adjustWidth);
     TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, width);
     TIFFSetField(tif, TIFFTAG_IMAGELENGTH, height);
@@ -338,7 +343,7 @@ int tiff_set_fields_for_printer(gx_device_printer *pdev,
 
         TIFFSetField(tif, TIFFTAG_SOFTWARE, softwareValue);
     }
-    {
+    if (writedatetime) {
         struct tm tms;
         time_t t;
         char dateTimeValue[20];
@@ -441,7 +446,8 @@ cleanup:
  * output. */
 int
 tiff_downscale_and_print_page(gx_device_printer *dev, TIFF *tif, int factor,
-                              int mfs, int aw, int bpc, int num_comps)
+                              int mfs, int aw, int bpc, int num_comps,
+                              int trap_w, int trap_h, const int *trap_order)
 {
     int code = 0;
     byte *data = NULL;
@@ -455,8 +461,13 @@ tiff_downscale_and_print_page(gx_device_printer *dev, TIFF *tif, int factor,
     if (code < 0)
         return code;
 
-    code = gx_downscaler_init(&ds, (gx_device *)dev, 8, bpc, num_comps,
-                              factor, mfs, &fax_adjusted_width, aw);
+    if (num_comps == 4) {
+        code = gx_downscaler_init_trapped(&ds, (gx_device *)dev, 8, bpc, num_comps,
+                                          factor, mfs, &fax_adjusted_width, aw, trap_w, trap_h, trap_order);
+    } else {
+        code = gx_downscaler_init(&ds, (gx_device *)dev, 8, bpc, num_comps,
+                                  factor, mfs, &fax_adjusted_width, aw);
+    }
     if (code < 0)
         return code;
 
@@ -509,7 +520,7 @@ tiff_compression_param_string(gs_param_string *param, uint16 id)
             param_string_from_string(*param, c->str);
             return 0;
         }
-    return gs_error_undefined;
+    return_error(gs_error_undefined);
 }
 
 int
@@ -523,7 +534,7 @@ tiff_compression_id(uint16 *id, gs_param_string *param)
             *id = c->id;
             return 0;
         }
-    return gs_error_undefined;
+    return_error(gs_error_undefined);
 }
 
 int tiff_compression_allowed(uint16 compression, byte depth)

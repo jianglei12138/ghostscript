@@ -850,6 +850,7 @@ struct gx_device_pdf_s {
     bool DetectDuplicateImages;
     bool AllowIncrementalCFF;
     bool WantsToUnicode;
+    bool WantsPageLabels;
     bool AllowPSRepeatFunctions;
     bool IsDistiller;
     bool PreserveSMask;
@@ -881,6 +882,10 @@ struct gx_device_pdf_s {
                                      */
     bool FlattenFonts;
     int LastFormID;
+    char *ExtensionMetadata;        /* If present the non-standard pdfmark Extension_Metadata has been
+                                     * used, the content of ths string is written out as part of the
+                                     * metadata referenced by the Catalog.
+                                     */
 };
 
 #define is_in_page(pdev)\
@@ -914,7 +919,7 @@ struct gx_device_pdf_s {
  m(40, outline_levels) m(41, EmbeddedFiles)
  m(41, gx_device_pdf, EmbeddedFiles);
  m(42, gx_device_pdf, pdf_font_dir);*/
-#define gx_device_pdf_num_ptrs 43
+#define gx_device_pdf_num_ptrs 44
 #define gx_device_pdf_do_param_strings(m)\
     m(0, OwnerPassword) m(1, UserPassword) m(2, NoEncrypt)\
     m(3, DocumentUUID) m(4, InstanceUUID)
@@ -1127,8 +1132,8 @@ int pdf_free_resource_objects(gx_device_pdf *pdev, pdf_resource_type_t rtype);
 int pdf_store_page_resources(gx_device_pdf *pdev, pdf_page_t *page, bool clear_usage);
 
 /* Copy data from a temporary file to a stream. */
-void pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss);
-void pdf_copy_data_safe(stream *s, FILE *file, gs_offset_t position, long count);
+int pdf_copy_data(stream *s, FILE *file, gs_offset_t count, stream_arcfour_state *ss);
+int pdf_copy_data_safe(stream *s, FILE *file, gs_offset_t position, long count);
 
 /* Add the encryption filter. */
 int pdf_begin_encrypt(gx_device_pdf * pdev, stream **s, gs_id object_id);
@@ -1344,8 +1349,8 @@ int pdfmark_write_article(gx_device_pdf * pdev, const pdf_article_t * part);
 bool pdf_objname_is_valid(const byte *data, uint size);
 
 /*
- * Look up a named object.  Return e_rangecheck if the syntax is invalid,
- * e_undefined if no object by that name exists.
+ * Look up a named object.  Return_error(gs_error_rangecheck if the syntax is invalid,
+ * gs_error_undefined if no object by that name exists.
  */
 int pdf_find_named(gx_device_pdf * pdev, const gs_param_string * pname,
                    cos_object_t **ppco);
@@ -1370,7 +1375,7 @@ int pdf_refer_named(gx_device_pdf *pdev, const gs_param_string *pname,
 
 /*
  * Look up a named object as for pdf_refer_named.  If the object already
- * exists and is not simply a forward reference, return e_rangecheck;
+ * exists and is not simply a forward reference, return_error(gs_error_rangecheck);
  * if it exists as a forward reference, set its type and return 0;
  * otherwise, create the object with the given type and return 1.
  * pname = 0 is allowed: in this case, simply create the object.
@@ -1382,8 +1387,8 @@ int pdf_make_named_dict(gx_device_pdf * pdev, const gs_param_string * pname,
 
 /*
  * Look up a named object as for pdf_refer_named.  If the object does not
- * exist, or is a forward reference, return e_undefined; if the object
- * exists has the wrong type, return e_typecheck.
+ * exist, or is a forward reference, return gs_error_undefined; if the object
+ * exists has the wrong type, return gs_error_typecheck.
  */
 int pdf_get_named(gx_device_pdf * pdev, const gs_param_string * pname,
                   cos_type_t cotype, cos_object_t **ppco);

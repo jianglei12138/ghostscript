@@ -590,7 +590,7 @@ since gdevprn.c does (currently) support only 32-Bit Rasterdata.
 #undef INT32_MAX
 #undef UINT32_MAX
 
-#if     arch_log2_sizeof_int < 2  /* int is too small */
+#if     ARCH_LOG2_SIZEOF_INT < 2  /* int is too small */
 #define                   INT32_MIN  LONG_MIN
 #define                   INT32_MAX  LONG_MAX
 #define                  UINT32_MAX ULONG_MAX
@@ -970,10 +970,6 @@ Here are several Macros, named "UPD_MM_*" to deal with that.
 
 static const char rcsid[] = "$Revision: 5215 $";
 
-/** Default-Transfer-curve */
-
-static const float upd_data_xfer[2] = { 0.0, 1.0 };
-
 /*@ > */
 
 /* ------------------------------------------------------------------- */
@@ -1055,7 +1051,7 @@ upd_print_page(gx_device_printer *pdev, FILE *out)
          errprintf(pdev->memory, "CALL-REJECTED upd_print_page(0x%05lx,0x%05lx)\n",
              (long) udev,(long) out);
 #endif
-      return gs_error_undefined;
+	 return_error(gs_error_undefined);
    }
 
 #if UPD_MESSAGES & UPD_M_TOPCALLS
@@ -1197,8 +1193,7 @@ upd_print_page(gx_device_printer *pdev, FILE *out)
         gs_parsed_file_name_t parsed;
         const char *fmt;
 
-        if (NULL != udev->fname &&
-            0 <= gx_parse_output_file_name(&parsed, &fmt, udev->fname,
+        if (0 <= gx_parse_output_file_name(&parsed, &fmt, udev->fname,
                                            strlen(udev->fname), udev->memory) &&
             fmt
             ) {
@@ -4656,7 +4651,7 @@ upd_open_rascomp(upd_device *udev)
 /* ------------------------------------------------------------------- */
 /* upd_start_rascomp: write appropiate raster-header                   */
 /* ------------------------------------------------------------------- */
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
 #define put32(I32,Out)       \
    fwrite(&I32,1,4,Out)
 #else

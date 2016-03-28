@@ -52,7 +52,7 @@ gs_setblendmode(gs_state *pgs, gs_blend_mode_t mode)
     /* Compatible is now specified to be the same.                        */
     if (mode == BLEND_MODE_Compatible)
         mode = BLEND_MODE_Normal;
-    if (mode < 0 || mode > MAX_BLEND_MODE)
+    if ((int)mode < 0 || (int)mode > MAX_BLEND_MODE)
         return_error(gs_error_rangecheck);
     pgs->blend_mode = mode;
     return 0;
@@ -801,7 +801,7 @@ gs_abort_pdf14trans_device(gs_state * pgs)
 int
 gx_abort_trans_device(gs_imager_state * pis, gx_device * pdev)
 {
-    if_debug1m('v', pis->memory, "[v](0x%lx)gx_abort_trans_device(%d)\n", (ulong)pis);
+    if_debug1m('v', pis->memory, "[v](0x%lx)gx_abort_trans_device\n", (ulong)pis);
     if (dev_proc(pdev, discard_transparency_layer) != 0)
     return (*dev_proc(pdev, discard_transparency_layer)) (pdev, pis);
     else

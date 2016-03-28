@@ -23,6 +23,7 @@
                            which is used in a function __attribute__ by
                            tiffio.h */
 #include "gdevprn.h"
+#include "gxdownscale.h"
 
 /* ================ Implementation ================ */
 
@@ -33,9 +34,9 @@ typedef struct gx_device_tiff_s {
     bool  UseBigTIFF;           /* true = output big tiff file, false don't */
     uint16 Compression;         /* same values as TIFFTAG_COMPRESSION */
     long MaxStripSize;
-    long DownScaleFactor;
     long AdjustWidth;            /* 0 = no adjust, 1 = adjust to fax values, >1 = adjust to this */
-    long MinFeatureSize;         /* < 2 == no darkening */
+    bool write_datetime;
+    gx_downscaler_params downscale;
     TIFF *tif;                  /* TIFF file opened on gx_device_common.file */
 } gx_device_tiff;
 
@@ -43,14 +44,17 @@ dev_proc_open_device(tiff_open);
 dev_proc_close_device(tiff_close);
 dev_proc_get_params(tiff_get_params);
 dev_proc_get_params(tiff_get_params_downscale);
+dev_proc_get_params(tiff_get_params_downscale_cmyk);
 dev_proc_put_params(tiff_put_params);
 dev_proc_put_params(tiff_put_params_downscale);
+dev_proc_put_params(tiff_put_params_downscale_cmyk);
 
 int tiff_print_page(gx_device_printer *dev, TIFF *tif, int min_feature_size);
 
 int tiff_downscale_and_print_page(gx_device_printer *dev, TIFF *tif,
                                   int factor, int msf, int aw, int bpc,
-                                  int num_comps);
+                                  int num_comps,
+                                  int trap_w, int trap_h, const int *trap_order);
 void tiff_set_handlers (void);
 
 /*
@@ -67,7 +71,7 @@ int tiff_set_compression(gx_device_printer *pdev,
                          long max_strip_size);
 
 int tiff_set_fields_for_printer(gx_device_printer *pdev, TIFF *tif, int factor,
-                                int adjustWidth);
+                                int adjustWidth, bool writedatetime);
 
 int gdev_tiff_begin_page(gx_device_tiff *tfdev, FILE *file);
 

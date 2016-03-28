@@ -346,6 +346,9 @@ is_pattern2_allowed_in_strategy(gx_device_pdf * pdev, const gx_drawing_color *pd
     const gs_color_space *pcs2 = gx_dc_pattern2_get_color_space(pdc);
     gs_color_space_index csi = gs_color_space_get_index(pcs2);
 
+    if (csi == gs_color_space_index_ICC)
+        csi = gsicc_get_default_type(pcs2->cmm_icc_profile_data);
+
     return is_cspace_allowed_in_strategy(pdev, csi);
 }
 
@@ -398,7 +401,7 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
                         break;
                     default:
                         /* Can't happen since we already check the colour space */
-                        return gs_error_rangecheck;
+		      return_error(gs_error_rangecheck);
                 }
                 pprintg1(pdev->strm, "%g", psdf_round(frac2float(conc[0]), 255, 8));
                 for (i = 1; i < pdev->color_info.num_components; i++) {
@@ -480,7 +483,7 @@ static int write_color_as_process(gx_device_pdf * pdev, const gs_imager_state * 
         return code;
     *used_process_color = true;
     return 0;*/
-    return gs_error_unknownerror;
+    return_error(gs_error_unknownerror);
 }
 
 static int write_color_unchanged(gx_device_pdf * pdev, const gs_imager_state * pis,
@@ -1235,7 +1238,7 @@ static int new_pdf_reset_color(gx_device_pdf * pdev, const gs_imager_state * pis
                      * unlike shading patterns we have no fallback.
                      */
                     if (pdev->CompatibilityLevel < 1.2) {
-                        return gs_error_undefined;
+		      return_error(gs_error_undefined);
                     }
                     code = pdf_put_colored_pattern(pdev, pdc, pcs,
                                 ppscc, pis, &pres);
@@ -2669,7 +2672,7 @@ pdf_open_gstate(gx_device_pdf *pdev, pdf_resource_t **ppres)
      */
     if (pdev->context != PDF_IN_STREAM) {
         /* We apparently use gs_error_interrupt as a request to change context. */
-        return gs_error_interrupt;
+      return_error(gs_error_interrupt);
     }
     code = pdf_alloc_resource(pdev, resourceExtGState, gs_no_id, ppres, -1L);
     if (code < 0)
@@ -2797,10 +2800,26 @@ pdf_update_alpha(gx_device_pdf *pdev, const gs_imager_state *pis,
         pdev->state.soft_mask_id = pis->soft_mask_id;
     }
     if (pdev->state.opacity.alpha != pis->opacity.alpha) {
-        if (pdev->state.shape.alpha != pis->shape.alpha)
-            return_error(gs_error_rangecheck);
-        ais = false;
-        alpha = pdev->state.opacity.alpha = pis->opacity.alpha;
+        if (pdev->state.shape.alpha != pis->shape.alpha) {
+            /* We had previously set one of opacity or shape, but we didn't
+             * ever need to write the graphcis state out, leaving us with a
+             * dangling alpha. We should honour the current state. One of
+             * opacity or alpha will be the default (1.0), so use the other.
+             */
+            pdev->state.opacity.alpha = pis->opacity.alpha;
+            pdev->state.shape.alpha = pis->shape.alpha;
+            if (pis->opacity.alpha != 1.0) {
+                ais = false;
+                alpha = pdev->state.opacity.alpha;
+            }
+            else {
+                ais = true;
+                alpha = pdev->state.shape.alpha;
+            }
+        } else {
+            ais = false;
+            alpha = pdev->state.opacity.alpha = pis->opacity.alpha;
+        }
     } else if (pdev->state.shape.alpha != pis->shape.alpha) {
         ais = true;
         alpha = pdev->state.shape.alpha = pis->shape.alpha;

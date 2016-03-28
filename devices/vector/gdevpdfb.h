@@ -271,6 +271,7 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  true,				/* DetectDuplicateImages */
  false,				/* AllowIncrementalCFF */
  !PDF_FOR_OPDFREAD,		/* WantsToUnicode */
+ !PDF_FOR_OPDFREAD,		/* WantsPageLabels */
  PDF_FOR_OPDFREAD,		/* AllowPSRepeatFunctions */
  true,				/* IsDistiller (true even for ps2write!) */
  !PDF_FOR_OPDFREAD,		/* PreserveSMask */
@@ -282,5 +283,6 @@ const gx_device_pdf PDF_DEVICE_IDENT =
  0,                     /* Size of resourceusage */
  false,                 /* called from output_page */
  false,                 /* FlattenFonts, writes text as outlines instead of fonts */
- -1                     /* Last Form ID, start with -1 which means 'none' */
+ -1,                    /* Last Form ID, start with -1 which means 'none' */
+ 0                      /* ExtensionMetadata */
 };

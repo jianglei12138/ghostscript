@@ -6,7 +6,7 @@ Ghostscript是一套建基于Adobe、PostScript及可移植文档格式（PDF）
 
 ####2.废话
 
-我不喜欢Ghostscript目前所采用的把所有以来的库与生成的可执行文件放在一起的做法，毕竟依赖的库是可以单独拿出来重复利用的。因此我移除了Ghostscript自带的几个库，单独的做成动态库以便重复利用，Ghostscript可能需要到的几个库可以在我的仓库里找到。多说一句，我用的是当前的最新版的Ghostscript 9.18。再多说一句，因为gs运行时需要/tmp文件夹，但是android没有，因此我使用自己建立的文件夹，具体可在base/gp_unifs.c搜索tmp找到 
+我不喜欢Ghostscript目前所采用的把所有以来的库与生成的可执行文件放在一起的做法，毕竟依赖的库是可以单独拿出来重复利用的。因此我移除了Ghostscript自带的几个库，单独的做成动态库以便重复利用，Ghostscript可能需要到的几个库可以在我的仓库里找到。多说一句，我用的是当前的最新版的Ghostscript 9.19。再多说一句，因为gs运行时需要/tmp文件夹，但是android没有，因此我使用自己建立的文件夹，具体可在base/gp_unifs.c搜索tmp找到 
 
 ```c
  strcpy(fname, "/system/usr/root/var/gs/tmp/");

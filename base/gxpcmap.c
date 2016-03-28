@@ -38,6 +38,8 @@
 #include "gxdevsop.h"
 #include "gdevmpla.h"
 #include "gdevp14.h"
+#include "gxgetbit.h"
+#include "gscoord.h"
 
 #if RAW_PATTERN_DUMP
 unsigned int global_pat_index = 0;
@@ -51,7 +53,7 @@ unsigned int global_pat_index = 0;
 uint
 gx_pat_cache_default_tiles(void)
 {
-#if arch_small_memory
+#if ARCH_SMALL_MEMORY
     return max_cached_patterns_SMALL;
 #else
 #ifdef DEBUG
@@ -65,7 +67,7 @@ gx_pat_cache_default_tiles(void)
 ulong
 gx_pat_cache_default_bits(void)
 {
-#if arch_small_memory
+#if ARCH_SMALL_MEMORY
     return max_pattern_bits_SMALL;
 #else
 #ifdef DEBUG
@@ -95,6 +97,7 @@ static dev_proc_copy_color(pattern_accum_copy_color);
 static dev_proc_copy_planes(pattern_accum_copy_planes);
 static dev_proc_get_bits_rectangle(pattern_accum_get_bits_rectangle);
 static dev_proc_fill_rectangle_hl_color(pattern_accum_fill_rectangle_hl_color);
+static dev_proc_dev_spec_op(pattern_accum_dev_spec_op);
 
 /* The device descriptor */
 static const gx_device_pattern_accum gs_pattern_accum_device =
@@ -168,7 +171,7 @@ static const gx_device_pattern_accum gs_pattern_accum_device =
      NULL,                              /* push_transparency_state */
      NULL,                              /* pop_transparency_state */
      NULL,                              /* put_image */
-     NULL,                              /* dev_spec_op */
+     pattern_accum_dev_spec_op,         /* dev_spec_op */
      pattern_accum_copy_planes,         /* copy_planes */
      NULL,                              /* get_profile */
      NULL,                              /* set_graphics_type_tag */
@@ -215,6 +218,9 @@ gx_pattern_size_estimate(gs_pattern1_instance_t *pinst, bool has_tags)
     int depth = (pinst->templat.PaintType == 2 ? 1 : tdev->color_info.depth);
     int64_t raster;
     int64_t size;
+
+    if (pinst->size.x == 0 || pinst->size.y == 0)
+        return 0;
 
     if (pinst->templat.uses_transparency) {
         /* if the device has tags, add in an extra tag byte for the pdf14 compositor */
@@ -632,6 +638,115 @@ pattern_accum_copy_planes(gx_device * dev, const byte * data, int data_x,
         return 0;
 }
 
+static int
+blank_unmasked_bits(gx_device * mask,
+                    int polarity,
+                    int num_comps,
+                    int depth,
+                    const gs_int_rect *prect,
+                    gs_get_bits_params_t *p)
+{
+    static const int required_options = GB_COLORS_NATIVE
+                       | GB_ALPHA_NONE
+                       | GB_RETURN_COPY
+                       | GB_ALIGN_STANDARD
+                       | GB_OFFSET_0
+                       | GB_RASTER_STANDARD;
+    int raster = p->raster;
+    byte *min;
+    int x0 = prect->p.x;
+    int y0 = prect->p.y;
+    int x, y;
+    int w = prect->q.x - x0;
+    int h = prect->q.y - y0;
+    int code = 0;
+    byte *ptr;
+    int blank = (polarity == GX_CINFO_POLARITY_ADDITIVE ? 255 : 0);
+
+    if ((p->options & required_options) != required_options)
+        return_error(gs_error_rangecheck);
+
+    min = gs_alloc_bytes(mask->memory, (w+7)>>3, "blank_unmasked_bits");
+    if (min == NULL)
+        return_error(gs_error_VMerror);
+
+    if (p->options & GB_PACKING_CHUNKY)
+    {
+        if ((depth & 7) != 0 || depth > 64)
+            return_error(gs_error_rangecheck);
+        ptr = p->data[0];
+        depth >>= 3;
+        raster -= w*depth;
+        for (y = 0; y < h; y++)
+        {
+            byte *mine;
+            code = dev_proc(mask, get_bits)(mask, y+y0, min, &mine);
+            if (code < 0)
+                goto fail;
+            for (x = 0; x < w; x++)
+            {
+                int xx = x+x0;
+                if (((mine[xx>>3]>>(x&7)) & 1) == 0) {
+                    switch (depth)
+                    {
+                    case 8:
+                        *ptr++ = blank;
+                    case 7:
+                        *ptr++ = blank;
+                    case 6:
+                        *ptr++ = blank;
+                    case 5:
+                        *ptr++ = blank;
+                    case 4:
+                        *ptr++ = blank;
+                    case 3:
+                        *ptr++ = blank;
+                    case 2:
+                        *ptr++ = blank;
+                    case 1:
+                        *ptr++ = blank;
+                        break;
+                    }
+                } else {
+                    ptr += depth;
+                }
+            }
+            ptr += raster;
+        }
+    } else {
+        if (depth/num_comps != 8)
+            return_error(gs_error_rangecheck);
+        for (y = 0; y < h; y++)
+        {
+            int c;
+            byte *mine;
+            code = dev_proc(mask, get_bits)(mask, y+y0, min, &mine);
+            if (code < 0)
+                goto fail;
+            for (c = 0; c < num_comps; c++)
+            {
+                if (p->data[c] == NULL)
+                    continue;
+                ptr = p->data[c] + raster * y;
+                for (x = 0; x < w; x++)
+                {
+                    int xx = x+x0;
+                    if (((mine[xx>>3]>>(x&7)) & 1) == 0) {
+                        *ptr++ = blank;
+                    } else {
+                        ptr++;
+                    }
+                }
+            }
+        }
+    }
+
+fail:
+    gs_free_object(mask->memory, min, "blank_unmasked_bits");
+
+    return code;
+}
+
 /* Read back a rectangle of bits. */
 /****** SHOULD USE MASK TO DEFINE UNREAD AREA *****/
 static int
@@ -639,16 +754,31 @@ pattern_accum_get_bits_rectangle(gx_device * dev, const gs_int_rect * prect,
                        gs_get_bits_params_t * params, gs_int_rect ** unread)
 {
     gx_device_pattern_accum *const padev = (gx_device_pattern_accum *) dev;
-    const gs_pattern1_instance_t *pinst = padev->instance;
+    int code;
+    gs_get_bits_params_t params2 = *params;
 
-    if (padev->bits)
-        return (*dev_proc(padev->target, get_bits_rectangle))
-            (padev->target, prect, params, unread);
+    if (padev->bits) {
+        if (padev->mask)
+            params2.options &= ~GB_RETURN_POINTER;
+        code = (*dev_proc(padev->target, get_bits_rectangle))
+            (padev->target, prect, &params2, unread);
+        /* If we have a mask, then unmarked pixels of the bits
+         * will be undefined. Strictly speaking it makes no
+         * sense for us to return any value here, but the only
+         * caller of this currently is the overprint code, which
+         * uses the the values to parrot back to us. Let's
+         * make sure they are set to the default 'empty' values.
+         */
+        if (code >= 0 && padev->mask)
+            code = blank_unmasked_bits((gx_device *)padev->mask,
+                                       padev->target->color_info.polarity,
+                                       padev->target->color_info.num_components,
+                                       padev->target->color_info.depth,
+                                       prect, &params2);
+        return code;
+    }
 
-    if (pinst->templat.PaintType == 2)
-        return 0;
-    else
-        return_error(gs_error_Fatal); /* shouldn't happen */
+    return_error(gs_error_Fatal); /* shouldn't happen */
 }
 
 /* ------ Color space implementation ------ */
@@ -1203,12 +1333,17 @@ gx_erase_colored_pattern(gs_state *pgs)
     if ((code = gs_setgray(pgs, 1.0)) >= 0) {
         gs_rect rect;
         gx_device_memory *mask;
+        static const gs_matrix identity = { 1, 0, 0, 1, 0, 0 };
+
         pgs->log_op = lop_default;
         rect.p.x = 0.0;
         rect.p.y = 0.0;
         rect.q.x = (double)pdev->width;
         rect.q.y = (double)pdev->height;
 
+        code = gs_setmatrix(pgs, &identity);
+        if (code < 0)
+            return code;
         /* we don't want the fill rectangle device call to use the
            mask */
         mask = pdev->mask;
@@ -1406,4 +1541,28 @@ gs_pattern1_remap_color(const gs_client_color * pc, const gs_color_space * pcs,
     pdc->mask.id = pinst->id;
     pdc->mask.m_tile = 0;
     return gx_pattern_load(pdc, pis, dev, select);
+}
+
+int
+pattern_accum_dev_spec_op(gx_device *dev, int dso, void *data, int size)
+{
+    gx_device_pattern_accum *const padev = (gx_device_pattern_accum *)dev;
+    const gs_pattern1_instance_t *pinst = padev->instance;
+    gx_device *target =
+        (padev->target == 0 ? gs_currentdevice(pinst->saved) :
+         padev->target);
+
+    if (dso == gxdso_in_pattern_accumulator)
+        return (pinst->templat.PaintType == 2 ? 2 : 1);
+    if (dso == gxdso_get_dev_param) {
+        dev_param_req_t *request = (dev_param_req_t *)data;
+        gs_param_list * plist = (gs_param_list *)request->list;
+        bool bool_true = 1;
+
+        if (strcmp(request->Param, "NoInterpolateImagemasks") == 0) {
+            return param_write_bool(plist, "NoInterpolateImagemasks", &bool_true);
+        }
+    }
+
+    return dev_proc(target, dev_spec_op)(target, dso, data, size);
 }

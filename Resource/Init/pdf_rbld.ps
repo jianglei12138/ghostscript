@@ -36,8 +36,9 @@
 {
   5 1 roll
   dup 65535 or 65535 ne {
-    (   **** Warning:  Generation number out of 0..65535 range, assuming 0.\n)
+    (   **** Error:  Generation number out of 0..65535 range, assuming 0.\n)
     pdfformaterror
+    (                Output may be incorrect.\n) pdfformaterror
     pop 0
   } if
         % We store generation numbers as value + 1
@@ -164,22 +165,26 @@
 %% choose to enhance this routine further.
 %%
 /search_earlier_trailer {
-{                                             % position
+  {                                             % position
     dup 0 gt {                                  % position bool
-      dup 65535 .min exch                        % block_size position
+      dup 65535 .min exch                       % block_size position
       1 index sub                               % block_size position-block_size
       dup                                       % block_size new_position new_position
       PDFfile exch setfileposition              % block_size new position
-      exch dup string 0 1 4 -1 roll 1 sub       %
+      exch dup                                  % new position block_size block_size
+      dup string 0 1 4 -1 roll 1 sub            %
       {2 copy PDFfile read pop put pop } for    %
-                                                % new_position (...string from file....)
+                                                % new_position block size (...string from file....)
       (trailer) search {
         pop
         { search not { exit } if pop } loop
                                                 % determine where the trailer is in the file
                                                 %   trailer loc = end loc - remaing string length
-        length exch 65535 add exch sub
+        length                                  % new_position block size string length
+        3 1 roll                                % string length new_position block size
+        add exch sub                            % string length - (new_position + block size)
       } {
+        pop                                     % discard old block size
         pop 0
       } ifelse
     } {
@@ -256,7 +261,7 @@
      length sub 9 sub
      % move the file to this position and read startxref and position
      PDFfile exch setfileposition PDFfile token
-     pop pop PDFfile token pop
+     pop pop PDFfile token_no_close pop
      dup type /integertype eq not {
        pop
        % startxref not followed by integer.  We will search the end of the file for trailer.
@@ -274,7 +279,8 @@
   } ifelse
   dup 0 eq {
     pop
-    (   **** Error:  Trailer is not found.\n) pdfformaterror
+    (   **** Error:  Trailer dictionary not found.\n) pdfformaterror
+    (                Output may be incorrect.\n) pdfformaterror
   }{
   % get the trailer
   dup
@@ -284,7 +290,7 @@
 
   {
     dup /Root known not {
-     (   **** Warning: This trailer dictionary does not contain a /Root entry\n        searching for a prior trailer.\n) pdfformaterror
+     (   **** Warning: This trailer dictionary does not contain a /Root entry\n        searching for a prior trailer.\n) pdfformatwarning
       %% remove trailer dict copy, duplicate file position, then remove the length of 'trailer' so we don't
       %% find the same one again....
       pop dup 7 sub
@@ -293,6 +299,7 @@
     dup 0 eq {
     pop
     (   **** Error:  Valid trailer not found.\n) pdfformaterror
+    (                Output may be incorrect.\n) pdfformaterror
     }{
       PDFfile exch setfileposition		% set to the specified trailer location
       /dictlevelcount 0 def
@@ -410,9 +417,9 @@
   % numbers.
   dup_obj_gen_num {
     (   **** Warning:  There are objects with matching object and generation\n)
-    pdfformaterror
-    (   **** numbers.  The accuracy of the resulting image is unknown.\n)
-    pdfformaterror
+    pdfformatwarning
+    (   **** numbers.  The output may be incorrect.\n)
+    pdfformatwarning
   } if
   currentdict /Orig_Objects undef
 } bind def
@@ -420,7 +427,7 @@
 % Print warning message because we found a problem while reading the xref
 % tables
 /print_xref_warning
-{ (   **** Warning:  An error occurred while reading an XREF table.\n)
+{ (   **** Error:  An error occurred while reading an XREF table.\n)
   pdfformaterror
   (   **** The file has been damaged.  This may have been caused\n)
   pdfformaterror
@@ -428,6 +435,7 @@
   pdfformaterror
   (   **** Ghostscript will attempt to recover the data.\n)
   pdfformaterror
+  (   **** However, the output may be incorrect.\n) pdfformaterror
 } bind def
 
 % Attempt to recover the XRef data.  This is called if we have a failure

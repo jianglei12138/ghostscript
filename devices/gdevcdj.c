@@ -3217,7 +3217,7 @@ cdj_set_bpp(gx_device *pdev, int bpp, int ccomps)
       if (cprn_device->cmyk) {
           switch (ccomps) {
               default:
-                  return gs_error_rangecheck;
+		return_error(gs_error_rangecheck);
                   /*NOTREACHED*/
                   break;
 
@@ -3317,7 +3317,7 @@ cdj_set_bpp(gx_device *pdev, int bpp, int ccomps)
         }
 
     default:
-bppe:  return gs_error_rangecheck;
+    bppe:  return_error(gs_error_rangecheck);
     }
 
     if (cprn_device->cmyk == -1) {
@@ -3360,7 +3360,7 @@ bppe:  return gs_error_rangecheck;
               break;
           }
 
-cce:  default: return gs_error_rangecheck;
+  cce:  default: return_error(gs_error_rangecheck);
   }
 
   if (cprn_device->cmyk) {
@@ -3701,9 +3701,9 @@ bjc_fscmyk(byte** inplanes, byte* outplanes[4][4], int** errplanes,
  */
       DIRECTION = -1;
       for(i = 0; i < 4; ++i) {
-         int j;
          float maxv = 1.0;
          /*KGHorig
+         int j;
          if((sd->stc.xfer[i].size < 1) || (sd->stc.xfer[i].data == NULL)) {
             maxv = 1.0;
          } else {
@@ -3715,7 +3715,6 @@ bjc_fscmyk(byte** inplanes, byte* outplanes[4][4], int** errplanes,
          */
          CMYK_THRESHOLD(i) = (int)(127.0 / maxv + 0.5);
          SPOTSIZE(i)  = ((int) CMYK_THRESHOLD(i)<<1)+1;
-         j = CMYK_THRESHOLD(i); /* Maximum Error-Value */
          errc[3] = 0;
          FSdiffuse(CMYK_THRESHOLD(i),errv[0],errc[0],errv[-4]);
          FSdiffuse(CMYK_THRESHOLD(i),errv[0],errc[0],errv[-4]);

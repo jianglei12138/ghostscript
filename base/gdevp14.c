@@ -1924,7 +1924,7 @@ pdf14_cmykspot_put_image(gx_device * dev, gs_imager_state * pis, gx_device * tar
     gs_separations * pseparations = &pdevn_params->separations;
     int planestride = buf->planestride;
     int rowstride = buf->rowstride;
-    const byte bg = pdev->ctx->additive ? gx_max_color_value : 0;
+    const byte bg = pdev->ctx->additive ? 0xff : 0;
     int num_comp = buf->n_chan - 1;
     byte *buf_ptr;
 
@@ -1974,7 +1974,7 @@ pdf14_custom_put_image(gx_device * dev, gs_imager_state * pis, gx_device * targe
     int planestride = buf->planestride;
     int rowstride = buf->rowstride;
     int num_comp = buf->n_chan - 1;
-    const byte bg = pdev->ctx->additive ? gx_max_color_value : 0;
+    const byte bg = pdev->ctx->additive ? 0xff : 0;
     int x1, y1, width, height;
     byte *buf_ptr;
 
@@ -2492,16 +2492,25 @@ pdf14_copy_alpha_color(gx_device * dev, const byte * data, int data_x,
                 dst[num_comp] = dst_ptr[num_comp * planestride];	/* alpha */
             }
             /* Get the aa alpha from the buffer */
-            if (depth == 2) {	/* map 0 - 3 to 0 - 15 */
-                alpha_aa = ((aa_row[sx >> 2] >> ((3 - (sx & 3)) << 1)) & 3) * 5;
-            } else {
-                alpha2_aa = aa_row[sx >> 1],
-                alpha_aa = (sx & 1 ? alpha2_aa & 0xf : alpha2_aa >> 4);
+            switch(depth)
+            {
+            case 2:  /* map 0 - 3 to 0 - 255 */
+                alpha_aa = ((aa_row[sx >> 2] >> ((3 - (sx & 3)) << 1)) & 3) * 85;
+                break;
+            case 4:
+                alpha2_aa = aa_row[sx >> 1];
+                alpha_aa = (sx & 1 ? alpha2_aa & 0xf : alpha2_aa >> 4) * 17;
+                break;
+            case 8:
+                alpha_aa = aa_row[sx];
+                break;
+            default:
+                return_error(gs_error_rangecheck);
             }
             if (alpha_aa != 0) {  /* This does happen */
-                if (!(alpha_aa == 15)) {
+                if (alpha_aa != 255) {
                     /* We have an alpha value from aa */
-                    alpha_aa_act =  (255 * alpha_aa) / 15;
+                    alpha_aa_act = alpha_aa;
                     if (src_alpha != 255) {
                         /* Need to combine it with the existing alpha */
                         int tmp = src_alpha * alpha_aa_act + 0x80;
@@ -5615,6 +5624,7 @@ gs_pdf14_device_push(gs_memory_t *mem, gs_imager_state * pis,
         ((gx_device_pdf14_accum *)new_target)->save_p14dev = (gx_device *)p14dev;  /* non-clist p14dev */
         /* Fill in values from the target device before opening */
         new_target->color_info.separable_and_linear = GX_CINFO_SEP_LIN;
+        new_target->color_info.anti_alias = p14dev->color_info.anti_alias;
         set_linear_color_bits_mask_shift(new_target);
         gs_pdf14_device_copy_params(new_target, target);
         ((gx_device_pdf14_accum *)new_target)->page_uses_transparency = true;
@@ -6525,12 +6535,6 @@ static	const gx_device_procs pdf14_clist_CMYKspot_procs =
                         pdf14_encode_color,
                         pdf14_decode_color);
 
-static	const gx_device_procs pdf14_clist_custom_procs =
-        pdf14_clist_procs(gx_forward_get_color_mapping_procs,
-                        gx_forward_get_color_comp_index,
-                        gx_forward_encode_color,
-                        gx_forward_decode_color);
-
 const pdf14_clist_device pdf14_clist_Gray_device = {
     std_device_color_stype_body(pdf14_clist_device, &pdf14_clist_Gray_procs,
                         "pdf14clistgray", &st_pdf14_device,
@@ -6641,16 +6645,19 @@ get_pdf14_clist_device_proto(gx_device * dev, pdf14_clist_device ** pdevproto,
             ptempdevproto->color_info.max_gray = 255;
             ptempdevproto->color_info.gray_index = 0; /* Avoid halftoning */
             ptempdevproto->color_info.dither_grays = 256;
+            ptempdevproto->color_info.anti_alias = dev->color_info.anti_alias;
             *pdevproto = ptempdevproto;
             break;
         case PDF14_DeviceRGB:
             *pdevproto = (pdf14_clist_device *)&pdf14_clist_RGB_device;
             *ptempdevproto = **pdevproto;
+            ptempdevproto->color_info.anti_alias = dev->color_info.anti_alias;
             *pdevproto = ptempdevproto;
             break;
         case PDF14_DeviceCMYK:
             *pdevproto = (pdf14_clist_device *)&pdf14_clist_CMYK_device;
             *ptempdevproto = **pdevproto;
+            ptempdevproto->color_info.anti_alias = dev->color_info.anti_alias;
             *pdevproto = ptempdevproto;
             break;
         case PDF14_DeviceCMYKspot:
@@ -6674,6 +6681,7 @@ get_pdf14_clist_device_proto(gx_device * dev, pdf14_clist_device ** pdevproto,
                 ptempdevproto->color_info.depth =
                                     ptempdevproto->color_info.num_components * 8;
             }
+            ptempdevproto->color_info.anti_alias = dev->color_info.anti_alias;
             *pdevproto = ptempdevproto;
             break;
         case PDF14_DeviceCustom:
@@ -6691,6 +6699,7 @@ get_pdf14_clist_device_proto(gx_device * dev, pdf14_clist_device ** pdevproto,
             ptempdevproto->color_info.max_color = 255;
             ptempdevproto->color_info.dither_grays = 256;
             ptempdevproto->color_info.dither_colors = 256;
+            ptempdevproto->color_info.anti_alias = dev->color_info.anti_alias;
             *pdevproto = ptempdevproto;
             break;
         default:			/* Should not occur */
@@ -7947,7 +7956,10 @@ c_pdf14trans_get_cropping(const gs_composite_t *pcte, int *ry, int *rheight,
                        OUTSIDE the bounding box of the soft mask */
                     *ry = cropping_min;
                     *rheight = cropping_max - cropping_min;
-                    return PUSHCROP; /* Push cropping. */
+                    if (pdf14pct->params.subtype == TRANSPARENCY_MASK_None)
+                        return SAMEAS_PUSHCROP_BUTNOPUSH;
+                    else
+                        return PUSHCROP; /* Push cropping. */
                 }
             }
         case PDF14_END_TRANS_GROUP: return POPCROP; /* Pop cropping. */

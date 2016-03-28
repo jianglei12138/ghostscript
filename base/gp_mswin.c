@@ -32,6 +32,7 @@
 /* prevent gp.h from defining fopen */
 #define fopen fopen
 
+#include "windows_.h"
 #include "stdio_.h"
 #include "string_.h"
 #include "memory_.h"
@@ -53,8 +54,6 @@
 #include "gsexit.h"
 #include "scommon.h"
 
-#include "windows_.h"
-#include <stdarg.h>
 #include <shellapi.h>
 #include <winspool.h>
 #include "gp_mswin.h"
@@ -277,7 +276,7 @@ gp_printfile(const char *filename, const char *pmport)
         GetProfileStringW(L"windows", L"device", L"",  wbuf, sizeof(wbuf));
         l = wchar_to_utf8(NULL, wbuf);
         if (l < 0 || l > sizeof(buf))
-            return gs_error_undefinedfilename;
+            return_error(gs_error_undefinedfilename);
         wchar_to_utf8(buf, wbuf);
 #endif
         if ((p = strchr(buf, ',')) != NULL)
@@ -289,7 +288,7 @@ gp_printfile(const char *filename, const char *pmport)
         else
             return gp_printfile_win32(filename, (char *)NULL);
     } else
-        return gs_error_undefinedfilename;
+        return_error(gs_error_undefinedfilename);
 }
 
 #define PRINT_BUF_SIZE 16384u
@@ -709,7 +708,7 @@ gp_open_scratch_file_generic(const gs_memory_t *mem,
                                GENERIC_READ | GENERIC_WRITE | DELETE,
                                FILE_SHARE_READ | FILE_SHARE_WRITE,
                                NULL, CREATE_ALWAYS,
-                               FILE_ATTRIBUTE_NORMAL /* | FILE_FLAG_DELETE_ON_CLOSE */,
+                               FILE_ATTRIBUTE_NORMAL | (remove ? FILE_FLAG_DELETE_ON_CLOSE : 0),
                                NULL);
 #else
             int len = utf8_to_wchar(NULL, sTempFileName);

@@ -509,9 +509,9 @@ ft_to_gs_error(FT_Error a_error)
 {
     if (a_error) {
         if (a_error == FT_Err_Out_Of_Memory)
-            return gs_error_VMerror;
+            return_error(gs_error_VMerror);
         else
-            return gs_error_unknownerror;
+            return_error(gs_error_unknownerror);
     }
     return 0;
 }
@@ -534,6 +534,7 @@ load_glyph(gs_fapi_server * a_server, gs_fapi_font * a_fapi_font,
     FT_Long h;
     FT_Long fflags;
     FT_Int32 load_flags = 0;
+    FT_Vector  delta = {0,0};
 
     /* Save a_fapi_font->char_data, which is set to null by FAPI_FF_get_glyph as part of a hack to
      * make the deprecated Type 2 endchar ('seac') work, so that it can be restored
@@ -598,6 +599,7 @@ load_glyph(gs_fapi_server * a_server, gs_fapi_font * a_fapi_font,
     /* Store the overriding metrics if they have been supplied. */
     if (face->ft_inc_int
         && a_char_ref->metrics_type != gs_fapi_metrics_notdef) {
+
         FT_Incremental_MetricsRec *m =
             &face->ft_inc_int->object->glyph_metrics;
         m->bearing_x = a_char_ref->sb_x >> 16;
@@ -605,6 +607,13 @@ load_glyph(gs_fapi_server * a_server, gs_fapi_font * a_fapi_font,
         m->advance = a_char_ref->aw_x >> 16;
         face->ft_inc_int->object->glyph_metrics_index = index;
         face->ft_inc_int->object->metrics_type = a_char_ref->metrics_type;
+
+        /* we only want this for fonts with TT outlines */
+        if (!a_fapi_font->is_type1) {
+            delta.y = 0;
+            delta.x = FT_MulFix(a_char_ref->sb_x, ft_face->size->metrics.x_scale);
+            FT_Vector_Transform( &delta, &face->ft_transform);
+       }
     }
     else if (face->ft_inc_int)
         /* Make sure we don't leave this set to the last value, as we may then use inappropriate metrics values */
@@ -683,6 +692,10 @@ load_glyph(gs_fapi_server * a_server, gs_fapi_font * a_fapi_font,
 
         a_fapi_font->char_data = saved_char_data;
         a_fapi_font->char_data_len = saved_char_data_len;
+    }
+
+    if ((!ft_error || !ft_error_fb) && (delta.x != 0 || delta.y != 0)) {
+        FT_Outline_Translate( &ft_face->glyph->outline, delta.x >> 16, delta.y >> 16 );
     }
 
     /* Previously we interpreted the glyph unscaled, and derived the metrics from that. Now we only interpret it
@@ -1108,9 +1121,6 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
                                    own_font_data_len, a_font->subfont,
                                    &ft_face);
 
-            if (!ft_error && ft_face)
-                ft_error = FT_Select_Charmap(ft_face, ft_encoding_unicode);
-
         }
         /* Load a typeface from a file. */
         else if (a_font->font_file_path) {
@@ -1132,9 +1142,6 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
             ft_error =
                 FT_Open_Face(s->freetype_library, &args, a_font->subfont,
                              &ft_face);
-
-            if (!ft_error && ft_face)
-                ft_error = FT_Select_Charmap(ft_face, ft_encoding_unicode);
         }
 
         /* Load a typeface from a representation in GhostScript's memory. */
@@ -1164,7 +1171,7 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
                 open_args.memory_base = own_font_data =
                     FF_alloc(s->ftmemory, length);
                 if (!open_args.memory_base)
-                    return gs_error_VMerror;
+                    return_error(gs_error_VMerror);
                 own_font_data_len = length;
                 if (type == 1)
                     open_args.memory_size =
@@ -1179,7 +1186,7 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
                 ft_inc_int = new_inc_int(a_server, a_font);
                 if (!ft_inc_int) {
                     FF_free(s->ftmemory, own_font_data);
-                    return gs_error_VMerror;
+                    return_error(gs_error_VMerror);
                 }
             }
 
@@ -1189,26 +1196,26 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
                 open_args.memory_size =
                     a_font->get_long(a_font, gs_fapi_font_feature_TT_size, 0);
                 if (open_args.memory_size == 0)
-                    return gs_error_invalidfont;
+                    return_error(gs_error_invalidfont);
 
                 /* Load the TrueType data into a single buffer. */
                 open_args.memory_base = own_font_data =
                     FF_alloc(s->ftmemory, open_args.memory_size);
                 if (!own_font_data)
-                    return gs_error_VMerror;
+                    return_error(gs_error_VMerror);
 
                 own_font_data_len = open_args.memory_size;
 
                 if (a_font->
                     serialize_tt_font(a_font, own_font_data,
                                       open_args.memory_size))
-                    return gs_error_invalidfont;
+                    return_error(gs_error_invalidfont);
 
                 /* We always load incrementally. */
                 ft_inc_int = new_inc_int(a_server, a_font);
                 if (!ft_inc_int) {
                     FF_free(s->ftmemory, own_font_data);
-                    return gs_error_VMerror;
+                    return_error(gs_error_VMerror);
                 }
             }
 
@@ -1238,7 +1245,7 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
                 FF_free(s->ftmemory, own_font_data);
                 FT_Done_Face(ft_face);
                 delete_inc_int(a_server, ft_inc_int);
-                return gs_error_VMerror;
+                return_error(gs_error_VMerror);
             }
             a_font->server_font_data = face;
         }
@@ -1289,23 +1296,32 @@ gs_fapi_ft_get_scaled_font(gs_fapi_server * a_server, gs_fapi_font * a_font,
 
         FT_Set_Transform(face->ft_face, &face->ft_transform, NULL);
         
-        for (i = 0; i < GS_FAPI_NUM_TTF_CMAP_REQ && !cmap; i++) {
-            if (a_font->ttf_cmap_req[i].platform_id > 0) {
-                for (j = 0; j < face->ft_face->num_charmaps; j++) {
-                    if (face->ft_face->charmaps[j]->platform_id == a_font->ttf_cmap_req[i].platform_id
-                     && face->ft_face->charmaps[j]->encoding_id == a_font->ttf_cmap_req[i].encoding_id) {
+        if (!a_font->is_type1) {
+            for (i = 0; i < GS_FAPI_NUM_TTF_CMAP_REQ && !cmap; i++) {
+                if (a_font->ttf_cmap_req[i].platform_id > 0) {
+                    for (j = 0; j < face->ft_face->num_charmaps; j++) {
+                        if (face->ft_face->charmaps[j]->platform_id == a_font->ttf_cmap_req[i].platform_id
+                         && face->ft_face->charmaps[j]->encoding_id == a_font->ttf_cmap_req[i].encoding_id) {
 
-                        cmap = face->ft_face->charmaps[j];
-                        break;
+                            cmap = face->ft_face->charmaps[j];
+                            break;
+                        }
                     }
                 }
+                else {
+                    break;
+                }
             }
-            else {
-                break;
+            if (cmap) {
+                (void)FT_Set_Charmap(face->ft_face, cmap);
             }
-        }
-        if (cmap) {
-            (void)FT_Set_Charmap(face->ft_face, cmap);
+            else if (a_font->full_font_buf != NULL || a_font->font_file_path != NULL) {
+                /* If we've passed a complete TTF to Freetype, but *haven't* requested a
+                 * specific cmap table above, try to use a Unicode one
+                 * If that doesn't work, just leave the default in place.
+                 */
+                (void)FT_Select_Charmap(face->ft_face, ft_encoding_unicode);
+            }
         }
     }
 

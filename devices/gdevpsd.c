@@ -17,6 +17,7 @@
 /* PhotoShop (PSD) export device, supporting DeviceN color models. */
 
 #include "math_.h"
+#include "gxiodev.h"
 #include "gdevprn.h"
 #include "gsparam.h"
 #include "gscrd.h"
@@ -34,6 +35,7 @@
 #include "gdevppla.h"
 #include "gxdownscale.h"
 #include "gdevdevnprn.h"
+#include "gdevpsd.h"
 
 #ifndef cmm_gcmmhlink_DEFINED
     #define cmm_gcmmhlink_DEFINED
@@ -65,6 +67,8 @@ static dev_proc_open_device(psd_prn_open);
 static dev_proc_close_device(psd_prn_close);
 static dev_proc_get_params(psd_get_params);
 static dev_proc_put_params(psd_put_params);
+static dev_proc_get_params(psd_get_params_cmyk);
+static dev_proc_put_params(psd_put_params_cmyk);
 static dev_proc_print_page(psd_print_page);
 static dev_proc_map_color_rgb(psd_map_color_rgb);
 static dev_proc_get_color_mapping_procs(get_psdrgb_color_mapping_procs);
@@ -88,9 +92,10 @@ typedef struct psd_device_s {
 
     psd_color_model color_model;
 
-    long downscale_factor;
     int max_spots;
     bool lock_colorants;
+
+    gx_downscaler_params downscale;
 
     /* ICC color profile objects, for color conversion.
        These are all device link profiles.  At least that
@@ -121,6 +126,7 @@ static
 ENUM_PTRS_WITH(psd_device_enum_ptrs, psd_device *pdev)
 {
     ENUM_PREFIX(st_gx_devn_prn_device, 0);
+    (void)pdev; /* Stop unused var warning */
     return 0;
 }
 ENUM_PTRS_END
@@ -128,6 +134,7 @@ ENUM_PTRS_END
 static RELOC_PTRS_WITH(psd_device_reloc_ptrs, psd_device *pdev)
 {
     RELOC_PREFIX(st_gx_devn_prn_device);
+    (void)pdev; /* Stop unused var warning */
 }
 RELOC_PTRS_END
 
@@ -147,7 +154,7 @@ gs_private_st_composite_final(st_psd_device, psd_device,
 /*
  * Macro definition for psd device procedures
  */
-#define device_procs(get_color_mapping_procs)\
+#define device_procs(get_color_mapping_procs, params)\
 {	psd_prn_open,\
         gx_default_get_initial_matrix,\
         NULL,				/* sync_output */\
@@ -162,8 +169,8 @@ gs_private_st_composite_final(st_psd_device, psd_device,
         NULL,				/* copy_color */\
         NULL,				/* draw_line */\
         NULL,				/* get_bits */\
-        psd_get_params,			/* get_params */\
-        psd_put_params,			/* put_params */\
+        psd_get_##params,		/* get_params */\
+        psd_put_##params,		/* put_params */\
         NULL,				/* map_cmyk_color - not used */\
         NULL,				/* get_xfont_procs */\
         NULL,				/* get_xfont_device */\
@@ -247,7 +254,7 @@ static fixed_colorant_name DeviceRGBComponents[] = {
  * PSD device with RGB process color model.
  */
 static const gx_device_procs spot_rgb_procs =
-    device_procs(get_psdrgb_color_mapping_procs);
+    device_procs(get_psdrgb_color_mapping_procs, params);
 
 const psd_device gs_psdrgb_device =
 {
@@ -265,16 +272,16 @@ const psd_device gs_psdrgb_device =
     { true },			/* equivalent CMYK colors for spot colors */
     /* PSD device specific parameters */
     psd_DEVICE_RGB,		/* Color model */
-    1,                          /* downscale_factor */
     GS_SOFT_MAX_SPOTS,           /* max_spots */
     false,                      /* colorants not locked */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /*
  * PSD device with CMYK process color model and spot color support.
  */
 static const gx_device_procs spot_cmyk_procs
-        = device_procs(get_psd_color_mapping_procs);
+        = device_procs(get_psd_color_mapping_procs, params_cmyk);
 
 const psd_device gs_psdcmyk_device =
 {
@@ -296,9 +303,9 @@ const psd_device gs_psdcmyk_device =
     { true },			/* equivalent CMYK colors for spot colors */
     /* PSD device specific parameters */
     psd_DEVICE_CMYK,		/* Color model */
-    1,                          /* downscale_factor */
-    GS_SOFT_MAX_SPOTS,           /* max_spots */
+    GS_SOFT_MAX_SPOTS,          /* max_spots */
     false,                      /* colorants not locked */
+    GX_DOWNSCALER_PARAMS_DEFAULTS
 };
 
 /* Open the psd devices */
@@ -354,12 +361,19 @@ psd_prn_open(gx_device * pdev)
         }
     }
     pdev_psd->warning_given = false;
+
+    /* For the planar device we need to set up the bit depth of each plane.
+       For other devices this is handled in check_device_separable where
+       we compute the bit shift for the components etc. */
+    for (k = 0; k < GS_CLIENT_COLOR_MAX_COMPONENTS; k++) {
+        pdev->color_info.comp_bits[k] = 8;
+    }
+
     /* With planar the depth can be more than 64.  Update the color
        info to reflect the proper depth and number of planes.  Also note
        that the number of spot colors can change from page to page.  
        Update things so that we only output separations for the
        inks on that page. */
-
     if (pdev->color_info.polarity == GX_CINFO_POLARITY_SUBTRACTIVE) {
         if ((pdev_psd->devn_params.page_spot_colors >= 0 || force_pdf) && !force_ps) {
             if (force_pdf) {
@@ -729,7 +743,7 @@ psd_open_profiles(psd_device *xdev)
 
 /* Get parameters.  We provide a default CRD. */
 static int
-psd_get_params(gx_device * pdev, gs_param_list * plist)
+psd_get_params_generic(gx_device * pdev, gs_param_list * plist, int cmyk)
 {
     psd_device *xdev = (psd_device *)pdev;
     int code;
@@ -765,7 +779,8 @@ psd_get_params(gx_device * pdev, gs_param_list * plist)
     if (code < 0)
         return code;
 #endif
-    code = param_write_long(plist, "DownScaleFactor", &xdev->downscale_factor);
+    code = gx_downscaler_write_params(plist, &xdev->downscale,
+                                      cmyk ? GX_DOWNSCALER_PARAMS_TRAP : 0);
     if (code < 0)
         return code;
     code = param_write_int(plist, "MaxSpots", &xdev->max_spots);
@@ -774,6 +789,19 @@ psd_get_params(gx_device * pdev, gs_param_list * plist)
     code = param_write_bool(plist, "LockColorants", &xdev->lock_colorants);
     return code;
 }
+
+static int
+psd_get_params(gx_device * pdev, gs_param_list * plist)
+{
+    return psd_get_params_generic(pdev, plist, 0);
+}
+
+static int
+psd_get_params_cmyk(gx_device * pdev, gs_param_list * plist)
+{
+    return psd_get_params_generic(pdev, plist, 1);
+}
+
 
 #if ENABLE_ICC_PROFILE
 static int
@@ -833,7 +861,7 @@ psd_set_color_model(psd_device *xdev, psd_color_model color_model)
 
 /* Set parameters.  We allow setting the number of bits per component. */
 static int
-psd_put_params(gx_device * pdev, gs_param_list * plist)
+psd_put_params_generic(gx_device * pdev, gs_param_list * plist, int cmyk)
 {
     psd_device * const pdevn = (psd_device *) pdev;
     int code = 0;
@@ -846,19 +874,10 @@ psd_put_params(gx_device * pdev, gs_param_list * plist)
     psd_color_model color_model = pdevn->color_model;
     gx_device_color_info save_info = pdevn->color_info;
 
-    switch (code = param_read_long(plist,
-                                   "DownScaleFactor",
-                                   &pdevn->downscale_factor)) {
-        case 0:
-            if (pdevn->downscale_factor <= 0)
-                pdevn->downscale_factor = 1;
-            break;
-        case 1:
-            break;
-        default:
-            param_signal_error(plist, "DownScaleFactor", code);
-            return code;
-    }
+    code = gx_downscaler_read_params(plist, &pdevn->downscale,
+                                     cmyk ? GX_DOWNSCALER_PARAMS_TRAP : 0);
+    if (code < 0)
+        return code;
 
     switch (code = param_read_bool(plist, "LockColorants", &(pdevn->lock_colorants))) {
         case 0:
@@ -878,7 +897,7 @@ psd_put_params(gx_device * pdev, gs_param_list * plist)
                 break;
             emprintf1(pdevn->memory, "MaxSpots must be between 0 and %d\n",
                       GS_CLIENT_COLOR_MAX_COMPONENTS-4);
-            code = gs_error_rangecheck;
+            code = gs_note_error(gs_error_rangecheck);
             /* fall through */
         default:
             param_signal_error(plist, "MaxSpots", code);
@@ -948,6 +967,18 @@ psd_put_params(gx_device * pdev, gs_param_list * plist)
     return code;
 }
 
+static int
+psd_put_params(gx_device * pdev, gs_param_list * plist)
+{
+    return psd_put_params_generic(pdev, plist, 0);
+}
+
+static int
+psd_put_params_cmyk(gx_device * pdev, gs_param_list * plist)
+{
+    return psd_put_params_generic(pdev, plist, 1);
+}
+
 /*
  * This routine will check to see if the color component name  match those
  * that are available amoung the current device's color components.
@@ -990,7 +1021,7 @@ psd_get_color_comp_index(gx_device * dev, const char * pname,
 /* ------ Private definitions ------ */
 
 /* All two-byte quantities are stored MSB-first! */
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
 #  define assign_u16(a,v) a = (v)
 #  define assign_u32(a,v) a = (v)
 #else
@@ -1322,8 +1353,11 @@ psd_write_image_data(psd_write_ctx *xc, gx_device_printer *pdev)
     if (sep_line == NULL)
         return_error(gs_error_VMerror);
 
-    code = gx_downscaler_init_planar(&ds, (gx_device *)pdev, &params, num_comp,
-                                     psd_dev->downscale_factor, 0, 8, 8);
+    code = gx_downscaler_init_planar_trapped(&ds, (gx_device *)pdev, &params, num_comp,
+                                             psd_dev->downscale.downscale_factor, 0, 8, 8,
+                                             psd_dev->downscale.trap_w,
+                                             psd_dev->downscale.trap_h,
+                                             psd_dev->downscale.trap_order);
     if (code < 0)
         goto cleanup;
 
@@ -1374,17 +1408,51 @@ cleanup:
     return code;
 }
 
+bool
+psd_allow_multiple_pages (gx_device_printer *pdev)
+{
+    psd_device *psd_dev = (psd_device *)pdev;
+    int code;
+    const char *fmt;
+    bool retval = true;
+    gs_parsed_file_name_t parsed;
+
+    if (strcmp(gp_null_file_name, psd_dev->fname) == 0) {
+        /* If the output is discarded, it doesn't matter whether
+         * the file is format valid or not
+         */
+        retval = true;
+    }
+    else {
+        code = gx_parse_output_file_name(&parsed, &fmt, psd_dev->fname,
+                                     strlen(psd_dev->fname), psd_dev->memory);
+        if (code < 0 || (fmt == NULL && psd_dev->PageCount > 0)) {
+            retval = false;
+        }
+    }
+    return retval;
+}
+
 static int
 psd_print_page(gx_device_printer *pdev, FILE *file)
 {
     psd_write_ctx xc;
     gx_devn_prn_device *devn_dev = (gx_devn_prn_device *)pdev;
     psd_device *psd_dev = (psd_device *)pdev;
+    int code = 0;
 
-    psd_setup(&xc, devn_dev, file,
-              gx_downscaler_scale(pdev->width, psd_dev->downscale_factor),
-              gx_downscaler_scale(pdev->height, psd_dev->downscale_factor));
-    psd_write_header(&xc, devn_dev);
-    psd_write_image_data(&xc, pdev);
-    return 0;
+    if (!psd_allow_multiple_pages(pdev)) {
+       emprintf(pdev->memory, "Use of the %%d format is required to output more than one page to PSD\nSee doc/Devices.htm#PSD for details\n\n");
+       code = gs_note_error(gs_error_ioerror);
+    }
+    else {
+        code = psd_setup(&xc, devn_dev, file,
+                  gx_downscaler_scale(pdev->width, psd_dev->downscale.downscale_factor),
+                  gx_downscaler_scale(pdev->height, psd_dev->downscale.downscale_factor));
+        if (code >= 0)
+            code = psd_write_header(&xc, devn_dev);
+        if (code >= 0)
+            code = psd_write_image_data(&xc, pdev);
+    }
+    return code;
 }

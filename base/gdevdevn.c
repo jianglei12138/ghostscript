@@ -1142,9 +1142,8 @@ gx_devn_prn_update_spot_equivalent_colors(gx_device *dev, const gs_state * pgs)
 {
     gx_devn_prn_device *pdev = (gx_devn_prn_device *)dev;
 
-    update_spot_equivalent_cmyk_colors(dev, pgs, &pdev->devn_params,
-                                       &pdev->equiv_cmyk_colors);
-    return 0;
+    return update_spot_equivalent_cmyk_colors(dev, pgs, &pdev->devn_params,
+                                              &pdev->equiv_cmyk_colors);
 }
 
 /*
@@ -1394,7 +1393,7 @@ spotcmyk_print_page(gx_device_printer * pdev, FILE * prn_stream)
 /* ------ Private definitions ------ */
 
 /* All two-byte quantities are stored LSB-first! */
-#if arch_is_big_endian
+#if ARCH_IS_BIG_ENDIAN
 #  define assign_ushort(a,v) a = ((v) >> 8) + ((v) << 8)
 #else
 #  define assign_ushort(a,v) a = (v)

@@ -308,7 +308,7 @@ int
 obj_cvp(const ref * op, byte * str, uint len, uint * prlen,
         int full_print, uint start_pos, const gs_memory_t *mem, bool restart)
 {
-    char buf[50];  /* big enough for any float, double, or struct name */
+    char buf[256];  /* big enough for any float, double, or struct name */
     const byte *data = (const byte *)buf;
     uint size;
     int code;
@@ -438,13 +438,15 @@ obj_cvp(const ref * op, byte * str, uint len, uint * prlen,
                 if (truncate) {
                     if (len - *prlen < 4 - skip)
                         return 1;
-                    memcpy(w.ptr + 1, "...)" + skip, 4 - skip);
+                    memcpy(w.ptr + 1, &"...)"[skip], 4 - skip);
                     *prlen += 4 - skip;
                 } else {
                     if (len - *prlen < 1 - skip)
                         return 1;
-                    memcpy(w.ptr + 1, ")" + skip, 1 - skip);
-                    *prlen += 1 - skip;
+                    if (!skip) {
+                        w.ptr[1] = ')';
+                        *prlen += 1;
+                    }
                 }
             }
             return 0;
@@ -781,7 +783,7 @@ num_params(const ref * op, int count, double *pval)
                 *--pval = op->value.realval;
                 break;
             case t_integer:
-                *--pval = op->value.intval;
+                *--pval = (double)op->value.intval;
                 mask++;
                 break;
             case t__invalid:
@@ -851,7 +853,7 @@ real_param(const ref * op, double *pparam)
 {
     switch (r_type(op)) {
         case t_integer:
-            *pparam = op->value.intval;
+            *pparam = (double)op->value.intval;
             break;
         case t_real:
             *pparam = op->value.realval;

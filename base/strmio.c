@@ -67,7 +67,7 @@ sfopen(const char *path, const char *mode, gs_memory_t *mem)
     s->position = 0;
     code = ssetfilename(s, (const byte *)path, strlen(path));
     if (code < 0) {
-        /* Only error is e_VMerror */
+        /* Only error is gs_error_VMerror */
         sclose(s);
         gs_free_object(s->memory, s, "sfopen: allocation error");
 #       define EMSG     "sfopen: allocation error setting path name into stream.\n"
@@ -89,6 +89,8 @@ sfread(void *ptr, size_t size, size_t count, stream *s)
     uint nread;
 
     code = sgets(s, ptr, size*count, &nread);
+    if (code < 0)
+        return code;
     return nread*size;
 }
 

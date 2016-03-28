@@ -99,6 +99,70 @@ int gdev_prn_maybe_realloc_memory(gx_device_printer *pdev,
                                   int old_width, int old_height,
                                   bool old_page_uses_transparency);
 
+/* Strings for cups_put/get_params */
+static const char * const cups_Integer_strings[] =
+{
+  "cupsInteger0",
+  "cupsInteger1",
+  "cupsInteger2",
+  "cupsInteger3",
+  "cupsInteger4",
+  "cupsInteger5",
+  "cupsInteger6",
+  "cupsInteger7",
+  "cupsInteger8",
+  "cupsInteger9",
+  "cupsInteger10",
+  "cupsInteger11",
+  "cupsInteger12",
+  "cupsInteger13",
+  "cupsInteger14",
+  "cupsInteger15",
+  NULL
+};
+
+static const char * const cups_Real_strings[] =
+{
+  "cupsReal0",
+  "cupsReal1",
+  "cupsReal2",
+  "cupsReal3",
+  "cupsReal4",
+  "cupsReal5",
+  "cupsReal6",
+  "cupsReal7",
+  "cupsReal8",
+  "cupsReal9",
+  "cupsReal10",
+  "cupsReal11",
+  "cupsReal12",
+  "cupsReal13",
+  "cupsReal14",
+  "cupsReal15",
+  NULL
+};
+
+static const char * const cups_String_strings[] =
+{
+  "cupsString0",
+  "cupsString1",
+  "cupsString2",
+  "cupsString3",
+  "cupsString4",
+  "cupsString5",
+  "cupsString6",
+  "cupsString7",
+  "cupsString8",
+  "cupsString9",
+  "cupsString10",
+  "cupsString11",
+  "cupsString12",
+  "cupsString13",
+  "cupsString14",
+  "cupsString15",
+  NULL
+};
+
 /*
  * Check if we are compiling against CUPS 1.2.  If so, enable
  * certain extended attributes and use a different page header
@@ -870,13 +934,12 @@ private int				/* O - Error status */
 cups_get_params(gx_device     *pdev,	/* I - Device info */
                 gs_param_list *plist)	/* I - Parameter list */
 {
-#ifdef CUPS_RASTER_SYNCv1
-  int			i;		/* Looping var */
-  char			name[255];	/* Attribute name */
-#endif /* CUPS_RASTER_SYNCv1 */
   int			code;		/* Return code */
   gs_param_string	s;		/* Temporary string value */
   bool			b;		/* Temporary boolean value */
+#ifdef CUPS_RASTER_SYNCv1
+  int			i;		/* Looping var */
+#endif /* CUPS_RASTER_SYNCv1 */
 
 
 #ifdef CUPS_DEBUG2
@@ -892,7 +955,7 @@ cups_get_params(gx_device     *pdev,	/* I - Device info */
 #endif /* CUPS_DEBUG2 */
 
   if ((code = gdev_prn_get_params(pdev, plist)) < 0)
-    return (code);
+    goto done;
 
 #ifdef CUPS_DEBUG2
   dmprintf(pdev->memory, "DEBUG2: after gdev_prn_get_params()\n");
@@ -904,191 +967,190 @@ cups_get_params(gx_device     *pdev,	/* I - Device info */
 
   param_string_from_transient_string(s, cups->header.MediaClass);
   if ((code = param_write_string(plist, "MediaClass", &s)) < 0)
-    return (code);
+    goto done;
 
   param_string_from_transient_string(s, cups->header.MediaColor);
   if ((code = param_write_string(plist, "MediaColor", &s)) < 0)
-    return (code);
+    goto done;
 
   param_string_from_transient_string(s, cups->header.MediaType);
   if ((code = param_write_string(plist, "MediaType", &s)) < 0)
-    return (code);
+    goto done;
 
   param_string_from_transient_string(s, cups->header.OutputType);
   if ((code = param_write_string(plist, "OutputType", &s)) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "AdvanceDistance",
                               (int *)&(cups->header.AdvanceDistance))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "AdvanceMedia",
                               (int *)&(cups->header.AdvanceMedia))) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.Collate;
   if ((code = param_write_bool(plist, "Collate", &b)) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "CutMedia",
                               (int *)&(cups->header.CutMedia))) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.Duplex;
   if ((code = param_write_bool(plist, "Duplex", &b)) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.InsertSheet;
   if ((code = param_write_bool(plist, "InsertSheet", &b)) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "Jog",
                               (int *)&(cups->header.Jog))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "LeadingEdge",
                               (int *)&(cups->header.LeadingEdge))) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.ManualFeed;
   if ((code = param_write_bool(plist, "ManualFeed", &b)) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "MediaPosition",
                               (int *)&(cups->header.MediaPosition))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "MediaWeight",
                               (int *)&(cups->header.MediaWeight))) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.MirrorPrint;
   if ((code = param_write_bool(plist, "MirrorPrint", &b)) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.NegativePrint;
   if ((code = param_write_bool(plist, "NegativePrint", &b)) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.OutputFaceUp;
   if ((code = param_write_bool(plist, "OutputFaceUp", &b)) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.Separations;
   if ((code = param_write_bool(plist, "Separations", &b)) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.TraySwitch;
   if ((code = param_write_bool(plist, "TraySwitch", &b)) < 0)
-    return (code);
+    goto done;
 
   b = cups->header.Tumble;
   if ((code = param_write_bool(plist, "Tumble", &b)) < 0)
-    return (code);
+    goto done;
 
 #if 0 /* Don't include read-only parameters... */
   if ((code = param_write_int(plist, "cupsWidth",
                               (int *)&(cups->header.cupsWidth))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsHeight",
                               (int *)&(cups->header.cupsHeight))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsBitsPerPixel",
                               (int *)&(cups->header.cupsBitsPerPixel))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsBytesPerLine",
                               (int *)&(cups->header.cupsBytesPerLine))) < 0)
-    return (code);
+    goto done;
 #endif /* 0 */
 
   if ((code = param_write_int(plist, "cupsMediaType",
                               (int *)&(cups->header.cupsMediaType))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsBitsPerColor",
                               (int *)&(cups->header.cupsBitsPerColor))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsColorOrder",
                               (int *)&(cups->header.cupsColorOrder))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsColorSpace",
                               (int *)&(cups->header.cupsColorSpace))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsCompression",
                               (int *)&(cups->header.cupsCompression))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsRowCount",
                               (int *)&(cups->header.cupsRowCount))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsRowFeed",
                               (int *)&(cups->header.cupsRowFeed))) < 0)
-    return (code);
+    goto done;
 
   if ((code = param_write_int(plist, "cupsRowStep",
                               (int *)&(cups->header.cupsRowStep))) < 0)
-    return (code);
+    goto done;
 
 #ifdef CUPS_RASTER_SYNCv1
 #if 0 /* Don't include read-only parameters... */
   if ((code = param_write_int(plist, "cupsNumColors",
                               (int *)&(cups->header.cupsNumColors))) < 0)
-    return (code);
+    goto done;
 #endif /* 0 */
 
   if ((code = param_write_float(plist, "cupsBorderlessScalingFactor",
                         	&(cups->header.cupsBorderlessScalingFactor))) < 0)
-    return (code);
+    goto done;
 
-  for (i = 0; i < 16; i ++)
+  for (i = 0; cups_Integer_strings[i] != NULL; i ++)
   {
-    sprintf(name, "cupsInteger%d", i);
-    if ((code = param_write_int(plist, strdup(name),
+    if ((code = param_write_int(plist, cups_Integer_strings[i],
                         	(int *)(cups->header.cupsInteger + i))) < 0)
-      return (code);
+      goto done;
   }
 
-  for (i = 0; i < 16; i ++)
+  for (i = 0; cups_Real_strings[i] != NULL; i ++)
   {
-    sprintf(name, "cupsReal%d", i);
-    if ((code = param_write_float(plist, strdup(name),
+    if ((code = param_write_float(plist, cups_Real_strings[i],
                         	  cups->header.cupsReal + i)) < 0)
-      return (code);
+      goto done;
   }
 
-  for (i = 0; i < 16; i ++)
+  for (i = 0; cups_String_strings[i] != NULL; i ++)
   {
-    sprintf(name, "cupsString%d", i);
     param_string_from_transient_string(s, cups->header.cupsString[i]);
-    if ((code = param_write_string(plist, strdup(name), &s)) < 0)
-      return (code);
+    if ((code = param_write_string(plist, cups_String_strings[i], &s)) < 0)
+      goto done;
   }
 
   param_string_from_transient_string(s, cups->header.cupsMarkerType);
   if ((code = param_write_string(plist, "cupsMarkerType", &s)) < 0)
-    return (code);
+    goto done;
 
   param_string_from_transient_string(s, cups->header.cupsRenderingIntent);
   if ((code = param_write_string(plist, "cupsRenderingIntent", &s)) < 0)
-    return (code);
+    goto done;
 
   param_string_from_transient_string(s, cups->header.cupsPageSizeName);
   if ((code = param_write_string(plist, "cupsPageSizeName", &s)) < 0)
-    return (code);
+    goto done;
 #endif /* CUPS_RASTER_SYNCv1 */
+
+done:
 
 #ifdef CUPS_DEBUG2
   dmprintf(pdev->memory, "DEBUG2: Leaving cups_get_params()\n");
 #endif /* CUPS_DEBUG2 */
 
-  return (0);
+  return code;
 }
 
 
@@ -2772,7 +2834,7 @@ cups_open(gx_device *pdev)		/* I - Device info */
   }
 
   if ((code = gdev_prn_open(pdev)) != 0)
-    return (code);
+    return(code);
 
   if (cups->PPD == NULL)
     cups->PPD = ppdOpenFile(getenv("PPD"));
@@ -2996,10 +3058,6 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
                 gs_param_list *plist)	/* I - Parameter list */
 {
   int			i;		/* Looping var */
-#ifdef CUPS_RASTER_SYNCv1
-  char			name[255];	/* Name of attribute */
-  float			sf;		/* cupsBorderlessScalingFactor */
-#endif /* CUPS_RASTER_SYNCv1 */
   float			margins[4];	/* Physical margins of print */
   ppd_size_t		*size;		/* Page size */
   int			code;		/* Error code */
@@ -3033,6 +3091,9 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   gs_param_string icc_pro_dummy;
   int old_cmps = cups->color_info.num_components;
   int old_depth = cups->color_info.depth;
+#ifdef CUPS_RASTER_SYNCv1
+  float			sf;		/* cupsBorderlessScalingFactor */
+#endif /* CUPS_RASTER_SYNCv1 */
 
 #ifdef CUPS_DEBUG
   dmprintf2(pdev->memory, "DEBUG2: cups_put_params(%p, %p)\n", pdev, plist);
@@ -3047,7 +3108,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   { \
     dmprintf1(pdev->memory, "ERROR: Error setting %s...\n", sname);	      \
     param_signal_error(plist, sname, code); \
-    return (code); \
+    goto done; \
   } \
   else if (code == 0) \
   { \
@@ -3061,7 +3122,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   { \
     dmprintf1(pdev->memory, "ERROR: Error setting %s ...\n", sname); \
     param_signal_error(plist, sname, code); \
-    return (code); \
+    goto done; \
   } \
   else if (code == 0) \
   { \
@@ -3073,7 +3134,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   { \
     dmprintf1(pdev->memory, "ERROR: Error setting %s ...\n", sname); \
     param_signal_error(plist, sname, code); \
-    return (code); \
+    goto done; \
   } \
   else if (code == 0) \
   { \
@@ -3087,7 +3148,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
     { \
       dmprintf1(pdev->memory, "ERROR: Error setting %s ...\n", sname); \
       param_signal_error(plist, sname, code); \
-      return (code); \
+      goto done; \
     } \
     if (code == 0) \
       cups->header.name = CUPS_FALSE; \
@@ -3104,7 +3165,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
     { \
       dmprintf1(pdev->memory, "ERROR: Error setting %s...\n", sname); \
       param_signal_error(plist, sname, code); \
-      return (code); \
+      goto done; \
     } \
     if (code == 0) \
     { \
@@ -3198,22 +3259,19 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 #ifdef CUPS_RASTER_SYNCv1
   floatoption(cupsBorderlessScalingFactor, "cupsBorderlessScalingFactor");
 
-  for (i = 0; i < 16; i ++)
+  for (i = 0; cups_Integer_strings[i] != NULL; i ++)
   {
-    sprintf(name, "cupsInteger%d", i);
-    intoption(cupsInteger[i],strdup(name), unsigned)
+    intoption(cupsInteger[i], cups_Integer_strings[i], unsigned)
   }
 
-  for (i = 0; i < 16; i ++)
+  for (i = 0; cups_Real_strings[i] != NULL; i ++)
   {
-    sprintf(name, "cupsReal%d", i);
-    floatoption(cupsReal[i], strdup(name))
+    floatoption(cupsReal[i], cups_Real_strings[i])
   }
 
-  for (i = 0; i < 16; i ++)
+  for (i = 0; cups_String_strings[i] != NULL; i ++)
   {
-    sprintf(name, "cupsString%d", i);
-    stringoption(cupsString[i], strdup(name))
+    stringoption(cupsString[i], cups_String_strings[i])
   }
 
   stringoption(cupsMarkerType, "cupsMarkerType");
@@ -3224,7 +3282,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   if ((code = param_read_string(plist, "cupsProfile", &stringval)) < 0)
   {
     param_signal_error(plist, "cupsProfile", code);
-    return (code);
+    goto done;
   }
   else if (code == 0)
   {
@@ -3235,7 +3293,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   }
 
   if ((code = cups_set_color_info(pdev)) < 0) {
-      return(code);
+      goto done;
   }
 
   /*
@@ -3243,7 +3301,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
   */
 
   if ((code = gdev_prn_put_params(pdev, plist)) < 0)
-    return (code);
+    goto done;
 
   /* If cups_set_color_info() changed the color model of the device we want to
    * force the raster memory to be recreated/reinitialized
@@ -3751,7 +3809,7 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
 						width_old, height_old,
 						transp_old))
 	  < 0)
-	return (code);
+        goto done;
 #ifdef CUPS_DEBUG
       dmprintf4(pdev->memory, "DEBUG2: Reallocated memory, [%.0f %.0f] = %dx%d pixels...\n",
                 pdev->MediaSize[0], pdev->MediaSize[1], width, height);
@@ -3928,7 +3986,8 @@ cups_put_params(gx_device     *pdev,	/* I - Device info */
             pdev->HWMargins[2], pdev->HWMargins[3]);
 #endif /* CUPS_DEBUG */
 
-  return (0);
+done:
+  return code;
 }
 
 /*
@@ -4481,7 +4540,9 @@ cups_print_chunked(gx_device_printer *pdev,
 		*dstptr;		/* Pointer to bits */
   int		count;			/* Count for loop */
   int		xflip,			/* Flip scanline? */
+#ifdef CUPS_DEBUG
                 yflip,			/* Reverse scanline order? */
+#endif
                 ystart, yend, ystep;    /* Loop control for scanline order */
   ppd_attr_t    *backside = NULL;
 
@@ -4520,12 +4581,16 @@ cups_print_chunked(gx_device_printer *pdev,
        (cups->header.Tumble &&
 	(backside && !strcasecmp(backside->value, "ManualTumble")))) &&
       !(cups->page & 1)) {
+#ifdef CUPS_DEBUG
     yflip = 1;
+#endif
     ystart = cups->height - 1;
     yend = -1;
     ystep = -1;
   } else {
+#ifdef CUPS_DEBUG
     yflip = 0;
+#endif
     ystart = 0;
     yend = cups->height;
     ystep = 1;
@@ -4708,7 +4773,9 @@ cups_print_banded(gx_device_printer *pdev,
   unsigned char	*cptr, *mptr, *yptr,	/* Pointer to components */
 		*kptr, *lcptr, *lmptr;	/* ... */
   int		xflip,			/* Flip scanline? */
+#ifdef CUPS_DEBUG
                 yflip,			/* Reverse scanline order? */
+#endif
                 ystart, yend, ystep;    /* Loop control for scanline order */
   ppd_attr_t    *backside = NULL;
 
@@ -4747,12 +4814,16 @@ cups_print_banded(gx_device_printer *pdev,
        (cups->header.Tumble &&
 	(backside && !strcasecmp(backside->value, "ManualTumble")))) &&
       !(cups->page & 1)) {
+#ifdef CUPS_DEBUG
     yflip = 1;
+#endif
     ystart = cups->height - 1;
     yend = -1;
     ystep = -1;
   } else {
+#ifdef CUPS_DEBUG
     yflip = 0;
+#endif
     ystart = 0;
     yend = cups->height;
     ystep = 1;
