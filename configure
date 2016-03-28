@@ -6520,20 +6520,13 @@ $as_echo "no" >&6; }
 $as_echo_n "checking for system freetype2 >= 2.4.2 with pkg-config... " >&6; }
             # pkg-config needs the libtool version, which != the freetype2 version <sigh!>
             # There is a table of corresponding ft2<->libtool numbers in freetype/docs/VERSION.DLL
-            if $PKGCONFIG --atleast-version=12.0.6 freetype2; then
-                { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-                FT_CFLAGS="$CFLAGS `$PKGCONFIG --cflags freetype2`"
-                FT_LIBS="`$PKGCONFIG --libs freetype2`"
+                { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5 
+                $as_echo "yes" >&6; }
+                FT_CFLAGS=""
+                FT_LIBS="-lfreetype"
                 FT_BRIDGE=1
                 SHARE_FT=1
-            else
-                { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-                { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: freetype library source not found...using native rasterizer" >&5
-$as_echo "$as_me: WARNING: freetype library source not found...using native rasterizer" >&2;}
-                AFS=1
-            fi
+
       else
         ac_fn_c_check_header_mongrel "$LINENO" "ft2build.h" "ac_cv_header_ft2build_h" "$ac_includes_default"
 if test "x$ac_cv_header_ft2build_h" = xyes; then :

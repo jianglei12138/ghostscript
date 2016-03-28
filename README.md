@@ -23,6 +23,7 @@ Ghostscript是一套建基于Adobe、PostScript及可移植文档格式（PDF）
 |   fontconfig   | fontconfig 是提供系统范围内字体设置,定制和允许应用程序访问的函数库  | [仓库地址](https://github.com/jianglei12138/fontconfig) |
 |    libpng12    |              libpng是官方PNG库               | [仓库地址](https://github.com/jianglei12138/libpng12) |
 | cups/cupsimage |         cups依赖的库，如果你不使用cups可以不用          | [仓库地址](https://github.com/jianglei12138/cups) |
+|    freetype    | FreeType库是一个完全免费（开源）的、高质量的且可移植的字体引擎，它提供统一的接口来访问多种字体格式文件 | [仓库地址](https://github.com/jianglei12138/freetype) |
 
 ####3.configure
 
